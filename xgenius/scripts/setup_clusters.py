@@ -1,20 +1,24 @@
 import json
 import os
 import shutil
+import importlib.resources as pkg_resources
 from rich.console import Console
 from rich.prompt import Prompt
 from rich import print
+from xgenius import sbatch_templates
 
 def copy_default_templates():
+    from rich.console import Console
     console = Console()
-    source_dir = os.path.join(os.path.dirname(__file__), 'sbatch_templates')
-    dest_dir = os.getenv("XGENIUS_TEMPLATES_DIR", os.path.expanduser("~/.xgenius/sbatch_templates"))
-    os.makedirs(dest_dir, exist_ok=True)
-    
-    for filename in os.listdir(source_dir):
-        shutil.copy(os.path.join(source_dir, filename), dest_dir)
 
-    console.print(f"[bold green]Default templates copied to [italic yellow]{dest_dir}[/italic yellow]. You can add or modify templates there.[/bold green]")
+    with pkg_resources.path(sbatch_templates, '') as source_dir:
+        dest_dir = os.getenv("XGENIUS_TEMPLATES_DIR", os.path.expanduser("~/.xgenius/sbatch_templates"))
+        os.makedirs(dest_dir, exist_ok=True)
+        
+        for filename in os.listdir(source_dir):
+            shutil.copy(os.path.join(source_dir, filename), dest_dir)
+
+        console.print(f"[bold green]Default templates copied to [italic yellow]{dest_dir}[/italic yellow]. You can add or modify templates there.[/bold green]")
 
 def setup_clusters():
     console = Console()

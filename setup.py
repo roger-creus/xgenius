@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='xgenius',
-    version='0.1.4',
+    version='0.1.5',
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
@@ -10,6 +10,9 @@ setup(
         'paramiko',
         'scp',
     ],
+    package_data={
+        'xgenius': ['sbatch_templates/*'],  # Include sbatch_templates in the package
+    },
     entry_points={
         'console_scripts': [
             'xgenius=xgenius.cli:main',
