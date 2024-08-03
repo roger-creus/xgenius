@@ -16,6 +16,7 @@
 ```bash
 xgenius-build-image --dockerfile=/path/to/Dockerfile --name=<output_image_name> --tag=<tag> --registry=<your_docker_username>
 ```
+where `--dockerfile` is the ABSOLUTE path to your Dockerfile.
 
 This command will build a Docker image, push it to your Docker registry, and then pull it to your local machine as a Singularity image. The Singularity image will be saved in the current directory under the name `<output_image_name>.sif` (the `.sif` extension will be added automatically).
 

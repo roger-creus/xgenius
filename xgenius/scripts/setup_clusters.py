@@ -7,7 +7,7 @@ from rich import print
 
 def copy_default_templates():
     console = Console()
-    source_dir = os.path.join(os.path.dirname(__file__), '../sbatch_templates')
+    source_dir = os.path.join(os.path.dirname(__file__), '../../sbatch_templates')
     dest_dir = os.getenv("XGENIUS_TEMPLATES_DIR", os.path.expanduser("~/.xgenius/sbatch_templates"))
     os.makedirs(dest_dir, exist_ok=True)
     
