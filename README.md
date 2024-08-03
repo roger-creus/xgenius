@@ -60,12 +60,12 @@ You are now all set up! Let’s run some experiments remotely!
 
 1. Push your Singularity image to the clusters you want:
     ```bash
-    xgenius-push-image --config=path/to/cluster_config.json --image=path/to/singularity_image.sif --clusters=cluster1,cluster2,cluster3
+    xgenius --config=path/to/cluster_config.json push-image --image=path/to/singularity_image.sif --clusters=cluster1,cluster2,cluster3
     ```
 
 2. Submit your jobs with:
     ```bash
-    xgenius-submit-jobs --config=path/to/cluster_config.json --run-config=path/to/run_config.json --cluster=cluster1 --run-command="python test.py" --pull-repos
+    xgenius --config=path/to/cluster_config.json submit-jobs --run-config=path/to/run_config.json --cluster=cluster1 --run-command="python test.py" --pull-repos
     ```
 
     Note: The `--pull-repos` flag is optional. It pulls changes from GitHub repositories before running the jobs. Always include it if your code is in a GitHub repository!
@@ -81,14 +81,14 @@ Done! Your jobs are now running on the cluster! 🎉
     {
         "cluster_name": "cluster1",
         "username": "<your_username>",
-        "image_path": "$SCRATCH", # the path where the Singularity image will be saved in the cluster
+        "image_path": "<cluster1_scratch_folder>", # the path where the Singularity image will be saved in the cluster
         "project_path": "/path/to/project/code/in/cluster", # the path where your code is in the cluster. same as CODE_DIR_IN_CLUSTER in run_config.json
         "sbatch_template": "slurm_partition_template.sbatch" # the SLURM template file to use for this cluster. see the templates in the XGENIUS_TEMPLATES_DIR directory
     },
     {
         "cluster_name": "cluster2",
         "username": "<your_username>",
-        "image_path": "$SCRATCH", 
+        "image_path": "<cluster2_scratch_folder>", 
         "project_path": "/path/to/project/code/in/cluster", 
         "sbatch_template": "slurm_partition_template.sbatch" 
     }
@@ -100,17 +100,17 @@ Done! Your jobs are now running on the cluster! 🎉
 {
     "cluster1": {
         "SINGULARITY_COMMAND": "singularity", # or 'apptainer' depending on the cluster
-        "GPUS_PER_TASK": "1",
+        "NUM_GPUS": "1",
         "IMAGE_NAME": "<your_singularity_image_name>.sif",
         "PARTITION": "<partition_name>",
         "CODE_DIR_IN_CLUSTER": "/path/to/project/code/in/cluster",
         "OUTPUT_DIR_IN_CONTAINER": "/path/to/output/dir/in/container", # set this to the directory where your code writes output
         "TIME": "23:59:00", # for the time limit of the job
         "MODULES_TO_LOAD": "singularity", # or 'apptainer' depending on the cluster + any other modules
-        "MEM_PER_CPU": "12G", # example RAM memory per CPU
+        "MEM": "12G", # example RAM memory per CPU
         "OUTPUT_DIR_IN_CLUSTER": "$SCRATCH/runs", # your code outputs will be saved here. OUTPUT_DIR_IN_CLUSTER is binded to OUTPUT_DIR_IN_CONTAINER (see the slurm templates)
         "COMMAND": "python test.py", # the code you want to run
-        "CPUS_PER_GPU": "12", # example CPUs
+        "NUM_CPUS": "12", # example CPUs
         "OUTPUT_FILE": "$SCRATCH/slurm-%j.out" # the logs file of the job
     }
 }

@@ -1,11 +1,10 @@
 #!/bin/bash
 #SBATCH --account={{ACCOUNT}}
-#SBATCH --ntasks=1
-#SBATCH --gpus-per-task={{GPUS_PER_TASK}}
-#SBATCH --cpus-per-gpu={{CPUS_PER_GPU}}
+#SBATCH --cpus-per-task={{NUM_CPUS}}
+#SBATCH --gres=gpu:{{NUM_GPUS}}
+#SBATCH --mem={{MEM}}
 #SBATCH --time={{TIME}}
 #SBATCH --output={{OUTPUT_FILE}}
-#SBATCH --mem-per-cpu={{MEM_PER_CPU}}
 
 mkdir -p {{OUTPUT_DIR_IN_CLUSTER}}
 
