@@ -1,0 +1,1 @@
+include xgenius/sbatch_templates/*.sbatch

@@ -1,0 +1,9 @@
+[
+    {
+        "cluster_name": "mila",
+        "username": "roger.creus-castanyer",
+        "image_path": "$SCRATCH",
+        "project_path": "/home/mila/r/roger.creus-castanyer/rainbow_plus",
+        "sbatch_template": "slurm_partition_template.sbatch"
+    }
+]
