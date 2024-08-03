@@ -32,7 +32,7 @@ def generate_run_config(cluster_config_path):
         sbatch_template_path = cluster['sbatch_template']
         
         # Assuming sbatch templates are in a subdirectory named 'sbatch_templates'
-        sbatch_template_path = os.path.join('sbatch_templates', sbatch_template_path)
+        sbatch_template_path = os.path.join(os.getenv('XGENIUS_TEMPLATES_DIR', os.path.expanduser('~/.xgenius/sbatch_templates')), sbatch_template_path)
         
         # Extract placeholders from the sbatch template
         placeholders = extract_placeholders(sbatch_template_path)
