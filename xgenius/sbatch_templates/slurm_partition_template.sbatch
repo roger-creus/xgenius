@@ -1,5 +1,6 @@
 #!/bin/bash
 #SBATCH --partition={{PARTITION}}
+#SBATCH --ntasks=1
 #SBATCH --cpus-per-task={{NUM_CPUS}}
 #SBATCH --gres=gpu:{{NUM_GPUS}}
 #SBATCH --time={{TIME}}
