@@ -57,8 +57,9 @@ def setup_clusters():
 
     console.print(f"\n[bold blue]Cluster configuration saved to [italic]{config_path}[/italic].[/bold blue]")
 
-if __name__ == "__main__":
-    # Copy default templates to user-accessible location
+def main():
     copy_default_templates()
-    # Set up clusters
     setup_clusters()
+
+if __name__ == "__main__":
+    main()

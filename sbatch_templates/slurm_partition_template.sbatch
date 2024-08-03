@@ -13,9 +13,9 @@ module load {{MODULES_TO_LOAD}}
 
 rsync -avz $SCRATCH/{{IMAGE_NAME}} $SLURM_TMPDIR
 
-singularity exec --nv \
-        -H {{CODE_DIR}} \
+{{SINGULARITY_COMMAND}} exec --nv \
+        -H {{CODE_DIR_IN_CLUSTER}} \
         --bind {{OUTPUT_DIR_IN_CLUSTER}}:{{OUTPUT_DIR_IN_CONTAINER}} \
-        --workdir {{CODE_DIR}} \
+        --workdir {{CODE_DIR_IN_CLUSTER}} \
         $SLURM_TMPDIR/{{IMAGE_NAME}} \
         bash -c "cd / && {{COMMAND}}"

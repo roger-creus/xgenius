@@ -13,11 +13,11 @@ setup(
     entry_points={
         'console_scripts': [
             'xgenius=xgenius.cli:main',
-            'xgenius-setup-clusters=xgenius.scripts.setup_clusters:setup_clusters',
-            'xgenius-setup-runs=xgenius.scripts.generate_run_config:main',
-            'xgenius-build-image=xgenius.scripts.build_image:main',
+            'xgenius-setup-clusters=scripts.setup_clusters:main',
+            'xgenius-setup-runs=scripts.generate_run_config:main',
+            'xgenius-build-image=scripts.build_image:main',
         ],
-    }
+    },
     author='Roger Creus Castanyer',
     author_email='creus99@gmail.com',
     description='A tool for managing cluster jobs and configurations',

@@ -4,11 +4,12 @@ import os
 
 def build_docker_image(dockerfile_path, image_name, tag):
     print(f"Building Docker image from {dockerfile_path}...")
+    path_to_dockerfile = os.path.dirname(dockerfile_path)
     subprocess.run([
         'docker', 'build',
         '-f', dockerfile_path,
         '-t', f'{image_name}:{tag}',
-        '.'
+        path_to_dockerfile
     ], check=True)
 
 def tag_docker_image(image_name, tag, registry_url):

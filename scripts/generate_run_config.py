@@ -12,9 +12,10 @@ def extract_placeholders(template_path):
         content = file.read()
         # Find all placeholders in the format {{PARAM}}
         placeholders.update(re.findall(r'\{\{(\w+)\}\}', content))
+        placeholders.discard('COMMAND')
     return placeholders
 
-def generate_run_config(cluster_config_path, output_config_path):
+def generate_run_config(cluster_config_path):
     """
     Generate a run_config.json file based on the provided cluster configuration file
     and the sbatch template files.
@@ -26,6 +27,7 @@ def generate_run_config(cluster_config_path, output_config_path):
     run_config = {}
 
     for cluster in cluster_config:
+        output_config_path = "run_config.json"
         cluster_name = cluster['cluster_name']
         sbatch_template_path = cluster['sbatch_template']
         
@@ -47,11 +49,10 @@ def generate_run_config(cluster_config_path, output_config_path):
 def main():
     parser = argparse.ArgumentParser(description='Generate a run_config.json from cluster configuration and sbatch templates.')
     parser.add_argument('cluster_config', help='Path to the cluster configuration JSON file')
-    parser.add_argument('output_config', help='Path to save the generated run_config.json file')
     
     args = parser.parse_args()
 
-    generate_run_config(args.cluster_config, args.output_config)
+    generate_run_config(args.cluster_config)
 
 if __name__ == "__main__":
     main()
