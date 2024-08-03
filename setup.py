@@ -19,6 +19,9 @@ setup(
             'xgenius-setup-clusters=xgenius.scripts.setup_clusters:main',
             'xgenius-setup-runs=xgenius.scripts.generate_run_config:main',
             'xgenius-build-image=xgenius.scripts.build_image:main',
+            'xgenius-check-jobs=xgenius.scripts.check_jobs:main',
+            'xgenius-cancel-jobs=xgenius.scripts.cancel_jobs:main',
+            'xgenius-pull-results=xgenius.scripts.pull_results:main'
         ],
     },
     author='Roger Creus Castanyer',

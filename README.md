@@ -72,6 +72,26 @@ You are now all set up! Let’s run some experiments remotely!
 
 Done! Your jobs are now running on the cluster! 🎉
 
+## Utility Commands 🛠️
+
+Check the status of your jobs in all clusters in cluster_config.json:
+
+```bash
+xgenius-check-jobs
+```
+
+Cancel all jobs in all clusters in cluster_config.json:
+
+```bash
+xgenius-cancel-jobs
+```
+
+Pull the results of your jobs from all clusters in cluster_config.json:
+
+```bash
+xgenius-pull-results
+```
+
 ## Examples 📝
 
 ### `cluster_config.json`
