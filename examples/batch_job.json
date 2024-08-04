@@ -1,0 +1,12 @@
+{
+    "experiments": [
+        {
+            "command": "python src/algorithms/rainbow_atari_envpool.py",
+            "cluster": "mila"
+        },
+        {
+            "command": "python src/algorithms/rainbow_atari_envpool.py",
+            "cluster": "narval"
+        }
+    ]
+}

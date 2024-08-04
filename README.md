@@ -8,13 +8,18 @@
 - Singularity installed on your local machine.
 - Docker installed on your local machine.
 - `docker login` works.
+- You have access to the clusters you want to run experiments on.
+- Your project code is also cloned on the clusters.
 
 ## Local Set-up 🧩
 
 ### (Optional) Build Singularity Container from Dockerfile 🐳
 
 ```bash
-xgenius-build-image --dockerfile=/path/to/Dockerfile --name=<output_image_name> --tag=<tag> --registry=<your_docker_username>
+xgenius-build-image --dockerfile=/path/to/Dockerfile \
+--name=<output_image_name> \
+--tag=<tag> \
+--registry=<your_docker_username>
 ```
 where `--dockerfile` is the ABSOLUTE path to your Dockerfile.
 
@@ -30,7 +35,14 @@ export XGENIUS_TEMPLATES_DIR=/path/to/your/templates
 
 **Recommendation:** export XGENIUS_TEMPLATES_DIR=<your_project_path>/slurm_templates
 
-**Important:** Add this to your `bashrc` or `~/.zshrc` to make it permanent!
+**Recommendation:** Use a Conda environment and set:
+
+```bash
+conda env config vars set XGENIUS_TEMPLATES_DIR=/path/to/your/templates
+```
+This way you can have a different `XGENIUS_TEMPLATES_DIR` for each environment/project.
+
+Otherwise, `XGENIUS_TEMPLATES_DIR` this to your `bashrc` or `~/.zshrc` to make it permanent.
 
 ### Set-Up Cluster Configuration 🏗️
 
@@ -60,17 +72,51 @@ You are now all set up! Let’s run some experiments remotely!
 
 1. Push your Singularity image to the clusters you want:
     ```bash
-    xgenius --config=path/to/cluster_config.json push-image --image=path/to/singularity_image.sif --clusters=cluster1,cluster2,cluster3
+    xgenius --config=path/to/cluster_config.json \
+    push-image \
+    --image=path/to/singularity_image.sif \
+    --clusters=cluster1,cluster2,cluster3
     ```
 
 2. Submit your jobs with:
     ```bash
-    xgenius --config=path/to/cluster_config.json submit-jobs --run-config=path/to/run_config.json --cluster=cluster1 --run-command="python test.py" --pull-repos
+    xgenius --config=path/to/cluster_config.json \
+    submit-jobs \
+    --run-config=path/to/run_config.json \
+    --cluster=cluster1 \
+    --run-command="python test.py" \
+    --pull-repos
     ```
 
     Note: The `--pull-repos` flag is optional. It pulls changes from GitHub repositories before running the jobs. Always include it if your code is in a GitHub repository!
 
 Done! Your jobs are now running on the cluster! 🎉
+
+## Batch jobs
+
+You can also submit batch jobs using a JSON config file:
+
+```json
+[
+    {
+        "command": "python test.py --test-arg1=1 --test-arg2=2",
+        "cluster": "cluster1",
+    },
+    {
+        "command": "python test.py --test-arg1=5 --test-arg2=10",
+        "cluster": "cluster2",
+    }
+]
+```
+
+And running:
+
+```bash
+xgenius-batch-submit --batch-file=/path/to/batch_job.json \
+--cluster-config=path/to/cluster_config.json \
+--run-config=path/to/run_config.json \
+--pull-repos
+```
 
 ## Utility Commands 🛠️
 
@@ -139,12 +185,21 @@ xgenius-pull-results
 
 1. Your Dockerfile must copy the source code of your project to the container. 
 
-    E.g. If the code to run experiments in your project is all under `src/`, then you must have the following line in your Dockerfile:
+    e.g. If the code to run experiments in your project is all under `src/`, then you must have the following line in your Dockerfile:
 
+    ```Dockerfile
     COPY ./src /src
+    ```
 
     Only then you will be able to run the experiments in the cluster setting:
 
-    xgenius-submit-jobs --config=path/to/cluster_config.json --run-config=path/to/run_config.json --cluster=cluster1 --run-command="python src/test.py" --pull-repos
+    ```bash
+    xgenius --config=path/to/cluster_config.json \
+    submit-jobs \
+    --run-config=path/to/run_config.json \
+    --cluster=cluster1 \
+    --run-command="python src/test.py" \
+    --pull-repos
+    ```
 
 2. Your project should be a GitHub repository. This is because the `--pull-repos` flag in the submit-jobs command will only work with GitHub repositories. If your project is not a GitHub repository, you will have to manually copy the code to the cluster.

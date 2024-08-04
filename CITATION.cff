@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the following metadata."
+title: "xgenius: A Tool for Managing Remote Jobs and Containerized Experiments"
+version: 1.0.0
+repository-code: "https://github.com/roger-creus/xgenius"
+license: "MIT"
+authors:
+  - family-names: "Creus Castanyer"
+    given-names: "Roger"
+    orcid: "https://orcid.org/0000-0003-1952-3357"
+    affiliation: "Mila Quebec AI Institute, Université de Montréal"
+
+keywords:
+  - "remote jobs"
+  - "containerization"
+  - "Singularity"
+  - "Docker"
+  - "SLURM"
+
+abstract: >
+  xgenius is a command-line tool for managing remote jobs and containerized experiments across multiple clusters.
+  It simplifies the process of building Docker images, converting them to Singularity format, and submitting jobs
+  to clusters using SLURM.
