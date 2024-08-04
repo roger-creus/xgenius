@@ -189,25 +189,3 @@ These files are created automatically with the commands above.
     }
 }
 ```
-## Gotchas ⚠️
-
-1. Your Dockerfile must copy the source code of your project to the container. 
-
-    e.g. If the code to run experiments in your project is all under `src/`, then you must have the following line in your Dockerfile:
-
-    ```Dockerfile
-    COPY ./src /src
-    ```
-
-    Only then you will be able to run the experiments in the cluster setting:
-
-    ```bash
-    xgenius --config=path/to/cluster_config.json \
-    submit-jobs \
-    --run-config=path/to/run_config.json \
-    --cluster=cluster1 \
-    --run-command="python src/test.py" \
-    --pull-repos
-    ```
-
-2. Your project should be a GitHub repository. This is because the `--pull-repos` flag in the submit-jobs command will only work with GitHub repositories. If your project is not a GitHub repository, you will have to manually copy the code to the cluster.
