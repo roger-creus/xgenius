@@ -13,6 +13,12 @@
 
 ## Local Set-up 🧩
 
+### Installation 🔧
+
+```bash
+pip install xgenius
+```
+
 ### (Optional) Build Singularity Container from Dockerfile 🐳
 
 ```bash
@@ -23,7 +29,7 @@ xgenius-build-image --dockerfile=/path/to/Dockerfile \
 ```
 where `--dockerfile` is the ABSOLUTE path to your Dockerfile.
 
-This command will build a Docker image, push it to your Docker registry, and then pull it to your local machine as a Singularity image. The Singularity image will be saved in the current directory under the name `<output_image_name>.sif` (the `.sif` extension will be added automatically).
+This command will build a Docker container, push it to your Docker registry, and then pull it to your local machine as a Singularity image. The Singularity image will be saved in the current directory under the name `<output_image_name>.sif` (the `.sif` extension will be added automatically).
 
 ### Define Environment Variable 🌍
 
@@ -33,7 +39,7 @@ First, define the environment variable for the path where SLURM template files w
 export XGENIUS_TEMPLATES_DIR=/path/to/your/templates
 ```
 
-**Recommendation:** export XGENIUS_TEMPLATES_DIR=<your_project_path>/slurm_templates
+**Recommendation:** `export XGENIUS_TEMPLATES_DIR=<your_project_path>/slurm_templates`
 
 **Recommendation:** Use a Conda environment and set:
 
@@ -42,7 +48,7 @@ conda env config vars set XGENIUS_TEMPLATES_DIR=/path/to/your/templates
 ```
 This way you can have a different `XGENIUS_TEMPLATES_DIR` for each environment/project.
 
-Otherwise, `XGENIUS_TEMPLATES_DIR` this to your `bashrc` or `~/.zshrc` to make it permanent.
+Otherwise, set the environment variable in your `bashrc` or `~/.zshrc` to make it permanent.
 
 ### Set-Up Cluster Configuration 🏗️
 
@@ -139,6 +145,8 @@ xgenius-pull-results
 ```
 
 ## Examples 📝
+
+These files are created automatically with the commands above.
 
 ### `cluster_config.json`
 
