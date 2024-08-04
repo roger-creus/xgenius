@@ -38,7 +38,7 @@ def setup_clusters():
             break
         
         username = Prompt.ask(f"[bold green]Enter username for {cluster_name}[/bold green]")
-        image_path = Prompt.ask(f"[bold green]Enter the path where the singularity image will be saved in {cluster_name} (e.g., $SCRATCH if the env variable exists in the cluster)[/bold green]")
+        image_path = Prompt.ask(f"[bold green]Enter the path where the singularity image will be saved in {cluster_name} (e.g., recommended: absoulte path for cluster scratch)[/bold green]")
         project_path = Prompt.ask(f"[bold green]Enter your ABSOLUTE project path for {cluster_name} (e.g., /home/{cluster_name}/<your-project-path-in-the-cluster>)[/bold green]")
 
         sbatch_template = Prompt.ask(f"[bold green]Enter sbatch template name for {cluster_name} (default: slurm_partition_template.sbatch)[/bold green]", default="slurm_partition_template.sbatch")

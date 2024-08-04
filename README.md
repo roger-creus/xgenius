@@ -174,10 +174,10 @@ xgenius-pull-results
         "TIME": "23:59:00", # for the time limit of the job
         "MODULES_TO_LOAD": "singularity", # or 'apptainer' depending on the cluster + any other modules
         "MEM": "12G", # example RAM memory per CPU
-        "OUTPUT_DIR_IN_CLUSTER": "$SCRATCH/runs", # your code outputs will be saved here. OUTPUT_DIR_IN_CLUSTER is binded to OUTPUT_DIR_IN_CONTAINER (see the slurm templates)
+        "OUTPUT_DIR_IN_CLUSTER": "/path/to/cluster/scratch/runs", # your code outputs will be saved here. OUTPUT_DIR_IN_CLUSTER is binded to OUTPUT_DIR_IN_CONTAINER (see the slurm templates)
         "COMMAND": "python test.py", # the code you want to run
         "NUM_CPUS": "12", # example CPUs
-        "OUTPUT_FILE": "$SCRATCH/slurm-%j.out" # the logs file of the job
+        "OUTPUT_FILE": "/path/to/cluster/scratch/slurm-%j.out" # the logs file of the job
     }
 }
 ```
