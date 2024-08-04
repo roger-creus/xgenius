@@ -15,7 +15,8 @@ rsync -avz $SCRATCH/{{IMAGE_NAME}} $SLURM_TMPDIR
 
 {{SINGULARITY_COMMAND}} exec --nv \
         -H {{CODE_DIR_IN_CLUSTER}} \
+        --bind {{CODE_DIR_IN_CLUSTER}}:/src \
         --bind {{OUTPUT_DIR_IN_CLUSTER}}:{{OUTPUT_DIR_IN_CONTAINER}} \
-        --workdir {{CODE_DIR_IN_CLUSTER}} \
+        --workdir /src \
         $SLURM_TMPDIR/{{IMAGE_NAME}} \
-        bash -c "cd / && {{COMMAND}}"
+        bash -c "{{COMMAND}}"
