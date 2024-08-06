@@ -74,27 +74,26 @@ This creates `run_config.json` with placeholder values. The placeholder values a
 
 You are now all set up! Let’s run some experiments remotely!
 
+**Recommendation:**  If you leave `cluster_config.json` and `run_config.json` in your project directory, running commands will be super easy as you won't need to specify the paths ever again!
+
 ## Running Experiments 🧪
 
 1. Push your Singularity image to the clusters you want:
     ```bash
-    xgenius --config=path/to/cluster_config.json \
-    push-image \
+    xgenius push-image \
     --image=path/to/singularity_image.sif \
     --clusters=cluster1,cluster2,cluster3
     ```
 
 2. Submit your jobs with:
     ```bash
-    xgenius --config=path/to/cluster_config.json \
-    submit-jobs \
-    --run-config=path/to/run_config.json \
+    xgenius submit_jobs \
     --cluster=cluster1 \
-    --run-command="python test.py" \
-    --pull-repos
+    --run_command="python test.py" \
+    --pull_repos
     ```
 
-    Note: The `--pull-repos` flag is optional. It pulls changes from GitHub repositories before running the jobs. Always include it if your code is in a GitHub repository!
+    Note: The `--pull_repos` flag is optional. It pulls changes from GitHub repositories before running the jobs. Always include it if your code is in a GitHub repository!
 
 Done! Your jobs are now running on the cluster! 🎉
 
@@ -118,10 +117,7 @@ You can also submit batch jobs using a JSON config file:
 And running:
 
 ```bash
-xgenius-batch-submit --batch-file=/path/to/batch_job.json \
---cluster-config=path/to/cluster_config.json \
---run-config=path/to/run_config.json \
---pull-repos
+xgenius-batch-submit --batch-file=/path/to/batch_job.json --pull-repos
 ```
 
 ## Utility Commands 🛠️
@@ -142,6 +138,12 @@ Pull the results of your jobs from all clusters in cluster_config.json:
 
 ```bash
 xgenius-pull-results
+```
+
+Remove the output folder in your clusters (useful before running a new batch of experiments)
+
+```bash
+xgenius-remove-results
 ```
 
 ## Examples 📝

@@ -1,6 +1,7 @@
 import os
 import json
 import subprocess
+import argparse
 from rich.console import Console
 
 def cancel_jobs(cluster):
@@ -15,14 +16,19 @@ def cancel_jobs(cluster):
         return f"Error canceling jobs on {cluster['cluster_name']}: {e}"
 
 def main():
+    parser = argparse.ArgumentParser(description="Cancel all jobs for the user on specified clusters.")
+    parser.add_argument('--cluster_config', type=str, default="cluster_config.json", 
+                        help="Path to the cluster configuration file.")
+
+    args = parser.parse_args()
+
     console = Console()
-    config_file = os.getenv("XGENIUS_CLUSTER_CONFIG", "cluster_config.json")
-    
-    if not os.path.exists(config_file):
-        console.print(f"[bold red]Cluster configuration file not found: {config_file}[/bold red]")
+
+    if not os.path.exists(args.cluster_config):
+        console.print(f"[bold red]Cluster configuration file not found: {args.cluster_config}[/bold red]")
         return
     
-    with open(config_file, "r") as f:
+    with open(args.cluster_config, "r") as f:
         clusters = json.load(f)
 
     console.print("[bold yellow]Canceling all jobs on all clusters...[/bold yellow]")

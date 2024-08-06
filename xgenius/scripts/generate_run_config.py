@@ -52,7 +52,7 @@ def main():
     
     args = parser.parse_args()
 
-    generate_run_config(args.cluster_config)
+    generate_run_config(args.config)
 
 if __name__ == "__main__":
     main()

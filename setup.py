@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='xgenius',
-    version='0.2.2',
+    version='0.2.3',
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
@@ -23,6 +23,7 @@ setup(
             'xgenius-cancel-jobs=xgenius.scripts.cancel_jobs:main',
             'xgenius-pull-results=xgenius.scripts.pull_results:main',
             'xgenius-batch-submit=xgenius.scripts.batch_submit:main',
+            'xgenius-remove-results=xgenius.scripts.remove_results:main',
         ],
     },
     author='Roger Creus Castanyer',

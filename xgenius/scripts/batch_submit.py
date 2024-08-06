@@ -5,11 +5,11 @@ from xgenius.cli import load_config
 
 def main():
     parser = argparse.ArgumentParser(description="Submit a batch of experiments.")
-    parser.add_argument('--batch-file', type=str, required=True, help="Path to the JSON file defining the batch of experiments.")
-    parser.add_argument('--cluster-config', type=str, required=True, help="Path to the JSON file with cluster configurations.")
-    parser.add_argument('--run-config', type=str, required=True, help="Path to the JSON file with run configurations.")
-    parser.add_argument('--pull-repos', action='store_true', help="Pull repositories before submitting jobs.")
-    parser.add_argument('--dry-run', action='store_true', help="Print commands without executing them.")
+    parser.add_argument('--cluster_config', type=str, default="cluster_config.json", help="Path to the JSON file with cluster configurations.")
+    parser.add_argument('--run_config', type=str, default="run_config.json", help="Path to the JSON file with run configurations.")
+    parser.add_argument('--batch_file', type=str, required=True, help="Path to the JSON file defining the batch of experiments.")
+    parser.add_argument('--pull_repos', action='store_true', help="Pull repositories before submitting jobs.")
+    parser.add_argument('--dry_run', action='store_true', help="Print commands without executing them.")
 
     args = parser.parse_args()
 

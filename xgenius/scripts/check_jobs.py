@@ -1,6 +1,7 @@
 import os
 import json
 import subprocess
+import argparse
 from rich.console import Console
 from rich.table import Table
 from datetime import datetime
@@ -33,14 +34,19 @@ def save_job_statuses(statuses, output_file):
             f.write(f"Cluster: {cluster}\n{status}\n\n")
 
 def main():
+    parser = argparse.ArgumentParser(description="Retrieve and display job statuses from remote clusters.")
+    parser.add_argument('--cluster_config', type=str, default="cluster_config.json", 
+                        help="Path to the cluster configuration file.")
+
+    args = parser.parse_args()
+
     console = Console()
-    config_file = os.getenv("XGENIUS_CLUSTER_CONFIG", "cluster_config.json")
-    
-    if not os.path.exists(config_file):
-        console.print(f"[bold red]Cluster configuration file not found: {config_file}[/bold red]")
+
+    if not os.path.exists(args.cluster_config):
+        console.print(f"[bold red]Cluster configuration file not found: {args.cluster_config}[/bold red]")
         return
     
-    with open(config_file, "r") as f:
+    with open(args.cluster_config, "r") as f:
         clusters = json.load(f)
 
     statuses = {}
@@ -50,12 +56,3 @@ def main():
 
     print_job_statuses(statuses)
 
-    save_to_file = console.input("Do you want to save the statuses to a file? (y/n): ")
-    if save_to_file.lower() == 'y':
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = console.input(f"Enter output file name [default: job_statuses_{timestamp}.txt]: ") or f"job_statuses_{timestamp}.txt"
-        save_job_statuses(statuses, output_file)
-        console.print(f"[bold green]Job statuses saved to {output_file}[/bold green]")
-
-if __name__ == "__main__":
-    main()
