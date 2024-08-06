@@ -20,11 +20,13 @@ def main():
 
     cluster_config = load_config(args.cluster_config)
 
-    if args.command == 'push-image':
+    if args.command == 'push_image':
         push_image(cluster_config, args.image, selected_clusters=args.clusters)
-    elif args.command == 'submit-jobs':
+    elif args.command == 'submit_jobs':
         run_config = load_config(args.run_config)
         submit_jobs(cluster_config, run_config, args.cluster, args.run_command, pull_repos_before_submit=args.pull_repos)
+    else:
+        print("Invalid command")
 
 if __name__ == "__main__":
     main()
