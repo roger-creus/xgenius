@@ -18,7 +18,7 @@ def main():
 
     args = parser.parse_args()
 
-    cluster_config = load_config(args.config)
+    cluster_config = load_config(args.cluster_config)
 
     if args.command == 'push-image':
         push_image(cluster_config, args.image, selected_clusters=args.clusters)

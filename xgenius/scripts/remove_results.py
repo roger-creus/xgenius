@@ -33,7 +33,7 @@ def main():
 
     args = parser.parse_args()
 
-    cluster_config = load_config(args.config)
+    cluster_config = load_config(args.cluster_config)
     run_config = load_config(args.run_config)
 
     remove_results(cluster_config, run_config, selected_clusters=args.clusters)
