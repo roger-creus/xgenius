@@ -83,6 +83,6 @@ def submit_jobs(cluster_config, run_config, cluster_name, command, pull_repos_be
     subprocess.run(['scp', local_sbatch_script_path, f'{username}@{cluster_name}:{remote_sbatch_script_path}'], check=True)
 
     print(f"Submitting job to {cluster_name}...")
-    subprocess.run(['ssh', f'{username}@{cluster_name}', f'sbatch {remote_sbatch_script_path}'], check=True)
+    subprocess.run(['ssh', f'{username}@{cluster_name}', f'cd {project_path} && sbatch submit_job.sh'], check=True)
 
     os.remove(local_sbatch_script_path)
