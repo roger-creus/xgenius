@@ -32,9 +32,9 @@ def main():
 
         command = experiment['command']
         cluster_name = experiment['cluster']
-        run_command = f"xgenius --config={args.cluster_config} submit_jobs --run_config={args.run_config} --cluster={cluster_name} --run_command=\"{command}\""
+        run_command = f"xgenius --cluster_config={args.cluster_config} submit_jobs --run_config={args.run_config} --cluster={cluster_name} --run_command=\"{command}\""
         if args.pull_repos:
-            run_command += " --pull-repos"
+            run_command += " --pull_repos"
 
         if args.dry_run:
             print(f"Dry run: {run_command}")
