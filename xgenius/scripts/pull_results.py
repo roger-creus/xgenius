@@ -4,13 +4,26 @@ import json
 import argparse
 from rich.console import Console
 
-def pull_results(cluster, remote_dir, local_dir):
+def pull_results(cluster, remote_dir, local_dir, exclude=None):
     console = Console()
     try:
         os.makedirs(local_dir, exist_ok=True)
         remote_path = f"{cluster['username']}@{cluster['cluster_name']}:{remote_dir}"
+        
+        # Build the rsync command
+        rsync_command = ["rsync", "-avz"]
+        
+        # Add exclude options if provided
+        if exclude:
+            for ex in exclude:
+                rsync_command.append(f"--exclude={ex}")
+        
+        # Add remote path and local directory
+        rsync_command.extend([remote_path, local_dir])
+        
+        # Run the rsync command
         result = subprocess.run(
-            ["rsync", "-avz", remote_path, local_dir],
+            rsync_command,
             capture_output=True, text=True, check=True
         )
         return f"Results pulled from {remote_path} to {local_dir}"
@@ -25,6 +38,8 @@ def main():
                         help="Path to the run configuration file.")
     parser.add_argument('--local_dir', type=str, default=".", 
                         help="Local directory to save the results.")
+    parser.add_argument('--exclude', type=str, nargs='+', default=None, 
+                        help="File types to exclude. Example: '*.pt' '*.log'")
 
     args = parser.parse_args()
 
@@ -51,7 +66,7 @@ def main():
         remote_dir = run_config.get(cluster_name, {}).get("OUTPUT_DIR_IN_CLUSTER")
         
         if remote_dir:
-            status = pull_results(cluster, remote_dir, args.local_dir)
+            status = pull_results(cluster, remote_dir, args.local_dir, args.exclude)
             console.print(status)
         else:
             console.print(f"[bold red]No remote directory found for {cluster_name}. Skipping...[/bold red]")
