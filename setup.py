@@ -23,6 +23,7 @@ setup(
             'xgenius-cancel-jobs=xgenius.scripts.cancel_jobs:main',
             'xgenius-pull-results=xgenius.scripts.pull_results:main',
             'xgenius-pull-repos=xgenius.scripts.pull_repos:main',
+            'xgenius-sync-repos=xgenius.scripts.sync_repos:main',
             'xgenius-remove-results=xgenius.scripts.remove_results:main',
             'xgenius-batch-submit=xgenius.scripts.batch_submit:main',
         ],
