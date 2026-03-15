@@ -52,7 +52,7 @@ class SSHClient:
     def _target(self) -> str:
         return f"{self.username}@{self.hostname}"
 
-    def run(self, command: str, timeout: int = 120) -> SSHResult:
+    def run(self, command: str, timeout: int = 300) -> SSHResult:
         """Execute a command on the remote cluster via SSH.
 
         Args:
