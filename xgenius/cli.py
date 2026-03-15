@@ -702,6 +702,24 @@ def cmd_audit(args):
     _output(entries, args.json)
 
 
+# --- Reconcile ---
+
+def cmd_reconcile(args):
+    """Reconcile local job tracker with actual SLURM state."""
+    config = _load_config(args)
+    from xgenius.jobs import JobManager
+
+    manager = JobManager(config)
+    result = manager.reconcile()
+    _output(result, args.json)
+    if not args.json:
+        if result["reconciled"] > 0:
+            console.print(f"[yellow]Reconciled {result['reconciled']} stale job(s)[/yellow]")
+        if result["completed_detected"] > 0:
+            console.print(f"[green]Detected {result['completed_detected']} completion(s)[/green]")
+        console.print(f"Active jobs: {result['still_active']}")
+
+
 # --- Job History ---
 
 def cmd_job_history(args):
@@ -875,6 +893,10 @@ def main():
     p = subparsers.add_parser("job-history", parents=[parent_parser], help="Show tracked job history with walltime/resources")
     p.add_argument("--limit", type=int, default=50, help="Number of entries")
     p.set_defaults(func=cmd_job_history)
+
+    # reconcile
+    p = subparsers.add_parser("reconcile", parents=[parent_parser], help="Reconcile local job tracker with actual SLURM state")
+    p.set_defaults(func=cmd_reconcile)
 
     # watch
     p = subparsers.add_parser("watch", parents=[parent_parser], help="Start background watcher daemon")

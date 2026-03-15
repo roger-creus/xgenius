@@ -301,14 +301,16 @@ class JobManager:
         finally:
             os.unlink(local_script)
 
-    def status(self, cluster_name: str | None = None) -> list[JobStatus]:
+    def status(self, cluster_name: str | None = None, reconcile: bool = True) -> list[JobStatus]:
         """Check job statuses across clusters.
 
         Returns rich info including elapsed time, time limit, pending reason,
         and submit time so Claude can make smart resource decisions.
+        Auto-reconciles local tracker with squeue state.
 
         Args:
             cluster_name: If provided, check only this cluster. Otherwise check all.
+            reconcile: If True, reconcile local tracker first (default True).
 
         Returns:
             List of JobStatus for xgenius-managed jobs.
@@ -638,6 +640,79 @@ class JobManager:
             "local_dir": local_dir,
             "remote_dir": cluster.project_path,
             "error": result.stderr if not result.success else "",
+        }
+
+    def reconcile(self) -> dict:
+        """Reconcile local job tracker with actual SLURM state.
+
+        For every job marked as 'submitted' or 'running' locally, check
+        if it still exists in squeue. If not, and no .done marker exists,
+        mark it as 'cancelled'. If a .done marker exists, process the completion.
+
+        This handles: external cancellation (scancel), job timeouts,
+        jobs that finished but markers weren't detected.
+
+        Returns:
+            Dict with reconciliation results.
+        """
+        jobs_path = os.path.join(self._xgenius_dir, "jobs.jsonl")
+        if not os.path.exists(jobs_path):
+            return {"reconciled": 0, "still_active": 0}
+
+        # Load locally pending jobs grouped by cluster
+        pending_by_cluster: dict[str, set[str]] = {}
+        with open(jobs_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                job = json.loads(line)
+                if job.get("status") in ("submitted", "running"):
+                    cluster = job.get("cluster", "")
+                    if cluster not in pending_by_cluster:
+                        pending_by_cluster[cluster] = set()
+                    pending_by_cluster[cluster].add(job["job_id"])
+
+        if not pending_by_cluster:
+            return {"reconciled": 0, "still_active": 0}
+
+        # Check actual squeue state per cluster
+        active_ids: set[str] = set()
+        for cluster_name in pending_by_cluster:
+            try:
+                statuses = self.status(cluster_name=cluster_name)
+                active_ids.update(s.job_id for s in statuses)
+            except Exception:
+                # If we can't reach the cluster, don't mark jobs as cancelled
+                active_ids.update(pending_by_cluster[cluster_name])
+
+        # Also check for .done markers (completed but not yet detected)
+        try:
+            completions = self.check_completions()
+            completed_ids = {c.job_id for c in completions}
+        except Exception:
+            completed_ids = set()
+
+        # Reconcile: mark stale jobs
+        all_pending = set()
+        for ids in pending_by_cluster.values():
+            all_pending.update(ids)
+
+        stale = all_pending - active_ids - completed_ids
+        for job_id in stale:
+            self._update_job_status(job_id, "cancelled")
+
+        # Update running jobs
+        for job_id in all_pending & active_ids:
+            self._update_job_status(job_id, "running")
+
+        still_active = len(all_pending) - len(stale) - len(completed_ids)
+
+        return {
+            "reconciled": len(stale),
+            "completed_detected": len(completed_ids),
+            "still_active": max(0, still_active),
+            "cancelled_ids": sorted(stale) if stale else [],
         }
 
     def _record_job(

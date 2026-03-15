@@ -88,7 +88,12 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
 
     while True:
         try:
-            # Check how many jobs are still pending locally
+            # Reconcile local tracker with actual SLURM state
+            recon = job_manager.reconcile()
+            if recon["reconciled"] > 0 and verbose:
+                print(f"xgenius watch: Reconciled {recon['reconciled']} stale job(s)")
+
+            # Check how many jobs are still pending
             pending = _load_pending_jobs(xgenius_dir)
 
             if not pending:
@@ -96,24 +101,6 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                     print("xgenius watch: No pending jobs. Waiting for new submissions...")
                 time.sleep(poll_interval)
                 continue
-
-            # Reconcile with actual cluster state: if a job is "submitted" locally
-            # but no longer in squeue, mark it as cancelled (user cancelled outside xgenius)
-            actual_statuses = job_manager.status()
-            active_job_ids = {s.job_id for s in actual_statuses}
-            stale_ids = pending - active_job_ids
-            if stale_ids:
-                for stale_id in stale_ids:
-                    # Check if there's a .done marker (completed but not yet detected)
-                    # If not, it was cancelled externally
-                    job_manager._update_job_status(stale_id, "cancelled")
-                if verbose:
-                    print(f"xgenius watch: Reconciled {len(stale_ids)} stale job(s) (no longer in squeue)")
-                # Reload after reconciliation
-                pending = _load_pending_jobs(xgenius_dir)
-                if not pending:
-                    time.sleep(poll_interval)
-                    continue
 
             if verbose:
                 print(f"xgenius watch: {len(pending)} pending job(s). Checking for completions...")
