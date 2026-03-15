@@ -702,6 +702,45 @@ def cmd_audit(args):
     _output(entries, args.json)
 
 
+# --- Reset ---
+
+def cmd_reset(args):
+    """Reset xgenius state for a fresh research run."""
+    config = _load_config(args)
+    from xgenius.config import get_xgenius_dir
+
+    xgenius_dir = get_xgenius_dir(config)
+
+    if not os.path.isdir(xgenius_dir):
+        console.print("Nothing to reset — .xgenius/ directory not found.")
+        return
+
+    files_to_clear = ["jobs.jsonl", "journal.jsonl", "journal_summary.md", "audit.jsonl"]
+    cleared = []
+    for fname in files_to_clear:
+        fpath = os.path.join(xgenius_dir, fname)
+        if os.path.exists(fpath):
+            with open(fpath, "w") as f:
+                pass
+            cleared.append(fname)
+
+    # Clear markers
+    markers_dir = os.path.join(xgenius_dir, "markers")
+    markers_cleared = 0
+    if os.path.isdir(markers_dir):
+        for mfile in os.listdir(markers_dir):
+            os.remove(os.path.join(markers_dir, mfile))
+            markers_cleared += 1
+
+    if args.json:
+        _output({"cleared": cleared, "markers_cleared": markers_cleared}, True)
+    else:
+        console.print(f"[green]Reset complete.[/green] Cleared: {', '.join(cleared)}")
+        if markers_cleared:
+            console.print(f"Removed {markers_cleared} completion marker(s).")
+        console.print("Ready for a fresh research run.")
+
+
 # --- Reconcile ---
 
 def cmd_reconcile(args):
@@ -897,6 +936,10 @@ def main():
     # reconcile
     p = subparsers.add_parser("reconcile", parents=[parent_parser], help="Reconcile local job tracker with actual SLURM state")
     p.set_defaults(func=cmd_reconcile)
+
+    # reset
+    p = subparsers.add_parser("reset", parents=[parent_parser], help="Reset all xgenius state for a fresh research run")
+    p.set_defaults(func=cmd_reset)
 
     # watch
     p = subparsers.add_parser("watch", parents=[parent_parser], help="Start background watcher daemon")
