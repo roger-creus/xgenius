@@ -1,7 +1,8 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it using the following metadata."
-title: "xgenius: A Tool for Managing Remote Jobs and Containerized Experiments"
-version: 1.0.0
+title: "xgenius: LLM-Oriented Autonomous Research Platform for SLURM Clusters"
+version: 2.0.0
+date-released: "2026-03-15"
 repository-code: "https://github.com/roger-creus/xgenius"
 license: "MIT"
 authors:
@@ -11,13 +12,18 @@ authors:
     affiliation: "Mila Quebec AI Institute, Université de Montréal"
 
 keywords:
-  - "remote jobs"
-  - "containerization"
-  - "Singularity"
-  - "Docker"
+  - "autonomous research"
+  - "LLM agents"
   - "SLURM"
+  - "experiment management"
+  - "Singularity"
+  - "reinforcement learning"
+  - "HPC"
 
 abstract: >
-  xgenius is a command-line tool for managing remote jobs and containerized experiments across multiple clusters.
-  It simplifies the process of building Docker images, converting them to Singularity format, and submitting jobs
-  to clusters using SLURM.
+  xgenius is an LLM-oriented autonomous research platform for SLURM clusters.
+  It enables AI agents (Claude Code) to autonomously formulate hypotheses,
+  modify code, submit experiments to HPC clusters, analyze results, and iterate —
+  with safety guarantees for shared infrastructure. Features include structured
+  job tracking, research journals, compute budget management, and a background
+  watcher daemon that triggers the agent on job completion.
