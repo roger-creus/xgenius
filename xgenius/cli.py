@@ -235,7 +235,7 @@ Runtime state is in `.xgenius/` (journal, jobs, audit log).
 - `xgenius journal update-hypothesis --id ID --status confirmed|rejected|partially_confirmed --conclusion "text"`
 
 **Job Management:**
-- `xgenius submit --cluster NAME --command "python script.py --args" [--experiment-id ID] [--hypothesis-id ID]` — Submit a job
+- `xgenius submit --cluster NAME --command "python script.py --args" [--experiment-id ID] [--hypothesis-id ID] [--gpus N] [--cpus N] [--memory "16G"] [--walltime "04:00:00"]` — Submit a job
 - `xgenius batch-submit --file experiments.json` — Submit multiple jobs
 - `xgenius status [--cluster NAME] [--json]` — Check job statuses
 - `xgenius cancel --cluster NAME --job-ids ID1,ID2` — Cancel specific jobs
@@ -275,8 +275,19 @@ Typical issues: outdated base images, missing dependencies, wrong Python version
 - `xgenius budget` — Check remaining compute budget
 - `xgenius validate --command "python script.py"` — Dry-run safety check
 - `xgenius audit [--limit N]` — View audit log
+- `xgenius job-history [--limit N] --json` — View past jobs with walltime, resources, and status
 
 All commands support `--json` for structured output.
+
+### Resource Management
+The xgenius.toml [safety] section defines MAXIMUM resource limits. You can request LESS:
+- `--gpus 1` instead of the max 4
+- `--walltime "02:00:00"` for a quick test instead of the max 24h
+- `--memory "16G"` if the job doesn't need much RAM
+- `--cpus 4` for a lightweight job
+
+Use `xgenius job-history --json` to see how long past jobs took, then adjust walltime accordingly.
+Use `xgenius status --json` to see pending/running jobs with their elapsed time, submit time, and pending reason.
 
 ### Research Workflow
 1. Run `xgenius journal context` to understand current state
@@ -334,6 +345,10 @@ def cmd_submit(args):
         command=args.command,
         experiment_id=args.experiment_id or "",
         hypothesis_id=args.hypothesis_id or "",
+        num_gpus=args.gpus,
+        num_cpus=args.cpus,
+        memory=args.memory,
+        walltime=args.walltime,
     )
 
     # Auto-record in journal if hypothesis_id provided
@@ -686,6 +701,18 @@ def cmd_audit(args):
     _output(entries, args.json)
 
 
+# --- Job History ---
+
+def cmd_job_history(args):
+    """Show history of tracked jobs with walltime and resources."""
+    config = _load_config(args)
+    from xgenius.jobs import JobManager
+
+    manager = JobManager(config)
+    history = manager.job_history(limit=args.limit)
+    _output(history, args.json)
+
+
 # --- Watch ---
 
 def cmd_watch(args):
@@ -721,6 +748,10 @@ def main():
     p.add_argument("--command", required=True, help="Command to run in container")
     p.add_argument("--experiment-id", default="", help="Experiment identifier")
     p.add_argument("--hypothesis-id", default="", help="Associated hypothesis ID")
+    p.add_argument("--gpus", type=int, default=None, help="GPUs (override, must be <= safety max)")
+    p.add_argument("--cpus", type=int, default=None, help="CPUs (override, must be <= safety max)")
+    p.add_argument("--memory", default=None, help="Memory e.g. '16G' (override, must be <= safety max)")
+    p.add_argument("--walltime", default=None, help="Walltime e.g. '04:00:00' (override, must be <= safety max)")
     p.set_defaults(func=cmd_submit)
 
     # batch-submit
@@ -837,6 +868,11 @@ def main():
     p = subparsers.add_parser("audit", parents=[parent_parser], help="Show audit log")
     p.add_argument("--limit", type=int, default=50, help="Number of entries")
     p.set_defaults(func=cmd_audit)
+
+    # job-history
+    p = subparsers.add_parser("job-history", parents=[parent_parser], help="Show tracked job history with walltime/resources")
+    p.add_argument("--limit", type=int, default=50, help="Number of entries")
+    p.set_defaults(func=cmd_job_history)
 
     # watch
     p = subparsers.add_parser("watch", parents=[parent_parser], help="Start background watcher daemon")

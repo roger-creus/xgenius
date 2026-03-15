@@ -52,9 +52,15 @@ class JobStatus:
     time_limit: str
     nodes: str
     cluster: str
+    submit_time: str = ""
+    start_time: str = ""
+    gpus: str = ""
+    cpus: str = ""
+    memory: str = ""
+    reason: str = ""  # Why pending (e.g., "Priority", "Resources")
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "job_id": self.job_id,
             "name": self.name,
             "state": self.state,
@@ -63,6 +69,19 @@ class JobStatus:
             "nodes": self.nodes,
             "cluster": self.cluster,
         }
+        if self.submit_time:
+            d["submit_time"] = self.submit_time
+        if self.start_time:
+            d["start_time"] = self.start_time
+        if self.gpus:
+            d["gpus"] = self.gpus
+        if self.cpus:
+            d["cpus"] = self.cpus
+        if self.memory:
+            d["memory"] = self.memory
+        if self.reason:
+            d["reason"] = self.reason
+        return d
 
 
 @dataclass
@@ -119,6 +138,10 @@ class JobManager:
         command: str,
         experiment_id: str = "",
         hypothesis_id: str = "",
+        num_gpus: int | None = None,
+        num_cpus: int | None = None,
+        memory: str | None = None,
+        walltime: str | None = None,
     ) -> SubmitResult:
         """Submit a job to a SLURM cluster.
 
@@ -126,11 +149,19 @@ class JobManager:
         Job ID is captured from sbatch output.
         Job is recorded in the tracker.
 
+        Resource overrides (num_gpus, num_cpus, memory, walltime) let Claude
+        request LESS than the cluster defaults. The safety validator ensures
+        they never exceed the max limits in xgenius.toml [safety].
+
         Args:
             cluster_name: Name of the cluster to submit to.
             command: Command to run inside the Singularity container.
             experiment_id: Unique experiment identifier.
             hypothesis_id: Associated hypothesis ID.
+            num_gpus: GPU override (must be <= safety max). Defaults to cluster config.
+            num_cpus: CPU override (must be <= safety max). Defaults to cluster config.
+            memory: Memory override e.g. "16G" (must be <= safety max). Defaults to cluster config.
+            walltime: Walltime override e.g. "04:00:00" (must be <= safety max). Defaults to cluster config.
 
         Returns:
             SubmitResult with job ID on success.
@@ -138,6 +169,12 @@ class JobManager:
         cluster = self._get_cluster(cluster_name)
         ssh = self._get_ssh(cluster_name)
         slurm = cluster.slurm
+
+        # Apply resource overrides (fall back to cluster defaults)
+        effective_gpus = num_gpus if num_gpus is not None else slurm.num_gpus
+        effective_cpus = num_cpus if num_cpus is not None else slurm.num_cpus
+        effective_memory = memory or slurm.memory
+        effective_walltime = walltime or slurm.walltime
 
         # Auto-generate experiment_id if not provided
         if not experiment_id:
@@ -153,16 +190,17 @@ class JobManager:
                 error=f"Command rejected: {cmd_result.reason}",
             )
 
-        # Safety: validate resource request
+        # Safety: validate resource request against max limits
         job_result = self.safety.validate_job_submission(
-            num_gpus=slurm.num_gpus,
-            num_cpus=slurm.num_cpus,
-            memory=slurm.memory,
-            walltime=slurm.walltime,
+            num_gpus=effective_gpus,
+            num_cpus=effective_cpus,
+            memory=effective_memory,
+            walltime=effective_walltime,
         )
         self.safety.log_action(
             "validate_job",
-            {"cluster": cluster_name, "gpus": slurm.num_gpus, "cpus": slurm.num_cpus},
+            {"cluster": cluster_name, "gpus": effective_gpus, "cpus": effective_cpus,
+             "memory": effective_memory, "walltime": effective_walltime},
             job_result,
         )
         if not job_result.allowed:
@@ -178,7 +216,12 @@ class JobManager:
         except FileNotFoundError as e:
             return SubmitResult(success=False, cluster=cluster_name, error=str(e))
 
+        # Build params with overrides applied
         params = build_params_from_cluster(cluster)
+        params["NUM_GPUS"] = str(effective_gpus)
+        params["NUM_CPUS"] = str(effective_cpus)
+        params["MEM"] = effective_memory
+        params["TIME"] = effective_walltime
         rendered = render_template(
             template=template,
             params=params,
@@ -255,6 +298,9 @@ class JobManager:
     def status(self, cluster_name: str | None = None) -> list[JobStatus]:
         """Check job statuses across clusters.
 
+        Returns rich info including elapsed time, time limit, pending reason,
+        and submit time so Claude can make smart resource decisions.
+
         Args:
             cluster_name: If provided, check only this cluster. Otherwise check all.
 
@@ -270,17 +316,18 @@ class JobManager:
             ssh = self._get_ssh(cname)
             cluster = self._get_cluster(cname)
 
-            # Use squeue to get job status
+            # Rich squeue format: job_id, name, state, elapsed, time_limit, nodes,
+            # submit_time, start_time, num_gpus, num_cpus, memory, reason
             result = ssh.run(
-                f'squeue -u {cluster.username} -o "%.18i %.30j %.8T %.10M %.10l %.6D %R" --noheader'
+                f'squeue -u {cluster.username} -o "%.18i|%.30j|%.8T|%.12M|%.12l|%.6D|%.20V|%.20S|%.4b|%.4C|%.10m|%R" --noheader'
             )
 
             if not result.success:
                 continue
 
             for line in result.stdout.splitlines():
-                parts = line.split()
-                if len(parts) >= 6:
+                parts = line.split("|")
+                if len(parts) >= 7:
                     all_statuses.append(JobStatus(
                         job_id=parts[0].strip(),
                         name=parts[1].strip(),
@@ -289,9 +336,33 @@ class JobManager:
                         time_limit=parts[4].strip(),
                         nodes=parts[5].strip(),
                         cluster=cname,
+                        submit_time=parts[6].strip() if len(parts) > 6 else "",
+                        start_time=parts[7].strip() if len(parts) > 7 else "",
+                        gpus=parts[8].strip() if len(parts) > 8 else "",
+                        cpus=parts[9].strip() if len(parts) > 9 else "",
+                        memory=parts[10].strip() if len(parts) > 10 else "",
+                        reason=parts[11].strip() if len(parts) > 11 else "",
                     ))
 
         return all_statuses
+
+    def job_history(self, limit: int = 50) -> list[dict]:
+        """Get history of all tracked jobs with walltime and resource usage.
+
+        Claude uses this to learn how long jobs take and adjust resource requests.
+        """
+        jobs_path = os.path.join(self._xgenius_dir, "jobs.jsonl")
+        if not os.path.exists(jobs_path):
+            return []
+
+        entries = []
+        with open(jobs_path) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    entries.append(json.loads(line))
+
+        return entries[-limit:]
 
     def cancel(self, cluster_name: str, job_ids: list[str]) -> dict:
         """Cancel specific jobs on a cluster.
