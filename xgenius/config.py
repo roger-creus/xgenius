@@ -14,7 +14,8 @@ class SlurmConfig:
     account: str = ""
     partition: str = ""
     num_gpus: int = 1
-    gpu_type: str = ""  # e.g., "h100", "a100", "v100" — empty means any GPU
+    gpu_type: str = ""  # default GPU type, e.g., "h100" — empty means any GPU
+    available_gpu_types: list[str] = field(default_factory=list)  # all GPU types Claude can pick from
     num_cpus: int = 8
     memory: str = "32G"
     walltime: str = "12:00:00"
@@ -47,7 +48,6 @@ class SafetyConfig:
     max_walltime: str = "24:00:00"
     max_concurrent_jobs: int = 10
     max_total_gpu_hours: float = 500
-    allowed_gpu_types: list[str] = field(default_factory=lambda: [])  # e.g., ["h100", "a100", "3g.20gb"]
     allowed_command_prefixes: list[str] = field(default_factory=lambda: ["python"])
     forbidden_patterns: list[str] = field(default_factory=lambda: [
         "rm -rf", "sudo", "chmod", "chown", "wget", "curl",
@@ -89,6 +89,7 @@ def _parse_slurm(data: dict) -> SlurmConfig:
         partition=str(data.get("partition", "")),
         num_gpus=int(data.get("num_gpus", 1)),
         gpu_type=str(data.get("gpu_type", "")),
+        available_gpu_types=data.get("available_gpu_types", []),
         num_cpus=int(data.get("num_cpus", 8)),
         memory=str(data.get("memory", "32G")),
         walltime=str(data.get("walltime", "12:00:00")),
@@ -155,7 +156,6 @@ def load_config(path: str = "xgenius.toml") -> XGeniusConfig:
         max_walltime=safety_data.get("max_walltime", "24:00:00"),
         max_concurrent_jobs=safety_data.get("max_concurrent_jobs", 10),
         max_total_gpu_hours=safety_data.get("max_total_gpu_hours", 500),
-        allowed_gpu_types=safety_data.get("allowed_gpu_types", []),
         allowed_command_prefixes=safety_data.get("allowed_command_prefixes", ["python"]),
         forbidden_patterns=safety_data.get("forbidden_patterns", SafetyConfig().forbidden_patterns),
         require_singularity=safety_data.get("require_singularity", True),

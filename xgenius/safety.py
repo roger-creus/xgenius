@@ -93,16 +93,18 @@ class SafetyValidator:
         memory: str,
         walltime: str,
         gpu_type: str = "",
+        cluster_name: str = "",
     ) -> ValidationResult:
         """Validate job resource requests against safety limits."""
         warnings = []
 
-        # Check GPU type is allowed
-        if gpu_type and self.safety.allowed_gpu_types:
-            if gpu_type not in self.safety.allowed_gpu_types:
+        # Check GPU type is allowed for this cluster
+        if gpu_type and cluster_name and cluster_name in self.config.clusters:
+            available = self.config.clusters[cluster_name].slurm.available_gpu_types
+            if available and gpu_type not in available:
                 return ValidationResult(
                     allowed=False,
-                    reason=f"GPU type '{gpu_type}' not in allowed list: {self.safety.allowed_gpu_types}",
+                    reason=f"GPU type '{gpu_type}' not available on {cluster_name}. Available: {available}",
                 )
 
         # Check GPU limit

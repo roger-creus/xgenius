@@ -200,6 +200,7 @@ class JobManager:
             memory=effective_memory,
             walltime=effective_walltime,
             gpu_type=effective_gpu_type,
+            cluster_name=cluster_name,
         )
         self.safety.log_action(
             "validate_job",
