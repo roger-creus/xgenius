@@ -257,6 +257,15 @@ Runtime state is in `.xgenius/` (journal, jobs, audit log).
 - `xgenius push-image --cluster NAME [--image PATH] --json` — Push .sif to cluster, verify it runs.
 - `xgenius verify-image --cluster NAME --json` — Verify container works on cluster.
 
+**CRITICAL — Container design:**
+The Docker/Singularity image must contain ONLY dependencies (CUDA, Python, pip packages), NOT the project code.
+Code is mounted at runtime via Singularity --bind flags in the SBATCH template. This means:
+- The Dockerfile should install all pip/system dependencies but should NOT COPY source code into the image.
+- Removing `COPY ./src /src` or similar lines from the Dockerfile is correct — code goes via `xgenius sync`.
+- Keep `COPY pyproject.toml` + `pip install` to install dependencies, but remove any final COPY of source code.
+- Remove any ENTRYPOINT that expects code to be baked in — the SBATCH template handles command execution.
+- After building, verify the image has all deps by running a test import, not by running the full code.
+
 **IMPORTANT for container building:** When `xgenius build` fails, YOU are responsible for diagnosing the error.
 Read the Dockerfile, understand the project structure, fix the issue, and re-run `xgenius build`.
 You can run individual steps (`--step docker`, `--step test`, `--step singularity`) to iterate on specific failures.
@@ -281,11 +290,14 @@ All commands support `--json` for structured output.
 ### Container Build Workflow
 When you need to build/rebuild the container:
 1. Read the Dockerfile and understand what it does
-2. Run `xgenius build --json` for the full pipeline
-3. If docker build fails: read the error, fix the Dockerfile, retry with `xgenius build --step docker --json`
-4. If tests fail: decide if the failure is critical, fix if needed, or use `--skip-tests`
-5. If singularity conversion fails: check if apptainer/singularity is installed
-6. After successful build: push to cluster with `xgenius push-image --cluster NAME --json`
+2. Ensure the Dockerfile does NOT bake source code into the image (remove COPY of source dirs, remove ENTRYPOINT)
+3. Ensure the Dockerfile installs all system + pip dependencies
+4. Run `xgenius build --json` for the full pipeline
+5. If docker build fails: read the error, fix the Dockerfile, retry with `xgenius build --step docker --json`
+6. Verify deps work: `xgenius build --step test --test-command "python -c 'import torch; print(torch.cuda.is_available())'" --json`
+7. If singularity conversion fails: check if apptainer/singularity is installed
+8. Push to cluster: `xgenius push-image --cluster NAME --json`
+9. You only need to rebuild the container when dependencies change. For code changes, use `xgenius sync`.
 
 ### Safety
 - All commands are validated against limits in xgenius.toml [safety]
