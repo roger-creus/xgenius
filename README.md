@@ -157,32 +157,42 @@ Claude will:
 
 **Important:** The container should contain only dependencies (CUDA, Python, pip packages), NOT source code. Code is synced separately via `xgenius sync` and mounted at runtime.
 
-### 5. Start the watcher daemon
+### 5. Start the autonomous research loop
 
-In a separate terminal (use tmux or screen):
+Use two terminals (tmux recommended):
 
 ```bash
-cd my-project
+# Terminal 1: kick off the agent (non-interactive)
+cd auto-myproject
+claude -p "Start the autonomous research loop. Read research_goal.md and begin."
+
+# Terminal 2: start the watcher daemon
+cd auto-myproject
 xgenius watch
 ```
 
-This runs forever, polling your clusters for completed jobs and triggering `claude --continue` to wake Claude up.
+The agent runs non-interactively (`-p` mode), does its work (reads goal, submits experiments), and exits. The watcher daemon polls clusters for completed jobs and triggers `claude --continue -p "..."` to wake the agent up when results are ready. This cycle repeats autonomously.
 
-### 6. Start the research loop
+**Safety:** The watcher will never trigger Claude if another Claude process is already running in the project directory. Completions are accumulated and delivered in the next cycle.
 
-In Claude Code:
-
+**Monitor progress:**
+```bash
+tail -f .xgenius/watcher.log           # watcher activity
+xgenius journal summary                # research progress
+xgenius status                         # running jobs
+xgenius job-history --json             # past jobs with walltimes
 ```
-Start the autonomous research loop. Read research_goal.md and begin.
+
+### Resetting for a fresh run
+
+```bash
+cd auto-myproject
+xgenius reset                          # clear journal, jobs, audit log
+git add -A && git commit -m "reset: fresh research run"
+git push
 ```
 
-Claude will:
-1. Read `xgenius journal context` for research state
-2. Formulate a hypothesis
-3. Modify code
-4. Sync to cluster and submit experiments
-5. Exit and wait for `xgenius watch` to trigger it on completion
-6. Analyze results, record findings, iterate
+The agent will start fresh and begin the research loop from scratch.
 
 ## Configuration Guide
 
