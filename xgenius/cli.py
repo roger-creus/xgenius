@@ -716,6 +716,30 @@ def cmd_journal(args):
         _output({"error": f"Unknown journal command: {args.journal_command}"}, args.json)
 
 
+# --- Report ---
+
+def cmd_report(args):
+    """Generate a full research report from journal history."""
+    config = _load_config(args)
+    from xgenius.journal import ResearchJournal
+    from xgenius.config import get_project_dir
+
+    journal = ResearchJournal(config)
+    report = journal.generate_report()
+
+    # Write to file
+    project_dir = get_project_dir(config)
+    output_path = args.output or os.path.join(project_dir, "research_report.md")
+    with open(output_path, "w") as f:
+        f.write(report)
+
+    if args.json:
+        _output({"output": output_path, "length": len(report)}, True)
+    else:
+        console.print(f"[green]Report written to {output_path}[/green]")
+        console.print(f"Length: {len(report)} characters, {len(report.splitlines())} lines")
+
+
 # --- Budget ---
 
 def cmd_budget(args):
@@ -969,6 +993,11 @@ def main():
     # budget
     p = subparsers.add_parser("budget", parents=[parent_parser], help="Show compute budget")
     p.set_defaults(func=cmd_budget)
+
+    # report
+    p = subparsers.add_parser("report", parents=[parent_parser], help="Generate full research report from journal history")
+    p.add_argument("--output", default=None, help="Output file path (default: research_report.md)")
+    p.set_defaults(func=cmd_report)
 
     # validate
     p = subparsers.add_parser("validate", parents=[parent_parser], help="Validate command against safety rules")

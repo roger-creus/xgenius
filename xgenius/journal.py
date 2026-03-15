@@ -358,6 +358,229 @@ class ResearchJournal:
             if e["status"] in ("submitted", "running")
         ]
 
+    def generate_report(self) -> str:
+        """Generate a full research report from all journal history.
+
+        Produces a publication-ready narrative with:
+        - Title and abstract
+        - Research motivation and goal
+        - Methodology (each hypothesis as a section)
+        - Results with metrics tables
+        - Analysis and discussion
+        - Conclusions and future work
+        - Appendix with compute stats
+
+        Returns markdown suitable for a blog post or technical report.
+        """
+        entries = self._read_entries()
+        if not entries:
+            return "# Research Report\n\nNo experiments have been recorded yet."
+
+        # Load research goal
+        project_dir = get_project_dir(self.config)
+        goal_path = os.path.join(project_dir, self.config.project.research_goal)
+        goal_text = ""
+        if os.path.exists(goal_path):
+            with open(goal_path) as f:
+                goal_text = f.read()
+
+        # Build state from entries
+        hypotheses = {}
+        experiments = {}
+        results = {}
+        timeline = []
+
+        for e in entries:
+            if e["type"] == "hypothesis":
+                hypotheses[e["id"]] = {
+                    "id": e["id"], "text": e["text"],
+                    "motivation": e.get("motivation", ""),
+                    "expected_outcome": e.get("expected_outcome", ""),
+                    "status": e["status"], "conclusion": "",
+                    "timestamp": e["timestamp"],
+                }
+                timeline.append({"time": e["timestamp"], "event": f"Hypothesis {e['id']}: {e['text'][:80]}"})
+            elif e["type"] == "hypothesis_update":
+                hid = e["hypothesis_id"]
+                if hid in hypotheses:
+                    hypotheses[hid]["status"] = e["status"]
+                    hypotheses[hid]["conclusion"] = e.get("conclusion", "")
+                timeline.append({"time": e["timestamp"], "event": f"Hypothesis {hid} → {e['status']}"})
+            elif e["type"] == "experiment":
+                experiments[e["id"]] = {
+                    "id": e["id"], "hypothesis_id": e["hypothesis_id"],
+                    "cluster": e["cluster"], "job_id": e["job_id"],
+                    "command": e["command"], "status": e["status"],
+                    "timestamp": e["timestamp"],
+                }
+            elif e["type"] == "experiment_update":
+                if e["experiment_id"] in experiments:
+                    experiments[e["experiment_id"]]["status"] = e["status"]
+            elif e["type"] == "result":
+                eid = e["experiment_id"]
+                if eid not in results:
+                    results[eid] = []
+                results[eid].append({
+                    "metrics": e["metrics"],
+                    "analysis": e.get("analysis", ""),
+                    "timestamp": e["timestamp"],
+                })
+                if eid in experiments:
+                    experiments[eid]["status"] = "completed"
+
+        # --- Build the report ---
+        lines = []
+
+        # Title
+        project_name = self.config.project.name
+        lines.append(f"# {project_name}: Autonomous Research Report\n")
+
+        # Abstract
+        total_hyp = len(hypotheses)
+        confirmed = sum(1 for h in hypotheses.values() if h["status"] == "confirmed")
+        rejected = sum(1 for h in hypotheses.values() if h["status"] == "rejected")
+        partial = sum(1 for h in hypotheses.values() if h["status"] == "partially_confirmed")
+        total_exp = len(experiments)
+        total_results = sum(len(r) for r in results.values())
+
+        lines.append("## Abstract\n")
+        lines.append(
+            f"This report documents an autonomous research campaign conducted using xgenius. "
+            f"Over the course of this investigation, {total_hyp} hypotheses were formulated and tested "
+            f"through {total_exp} experiments. Of these, {confirmed} hypotheses were confirmed, "
+            f"{partial} partially confirmed, and {rejected} rejected. "
+            f"A total of {total_results} result sets were collected and analyzed.\n"
+        )
+
+        # Research Goal
+        if goal_text:
+            lines.append("## Research Goal\n")
+            lines.append(goal_text)
+            lines.append("")
+
+        # Methodology & Results (one section per hypothesis)
+        lines.append("## Investigations\n")
+
+        for hid in sorted(hypotheses.keys()):
+            h = hypotheses[hid]
+            status_badge = {
+                "confirmed": "CONFIRMED",
+                "rejected": "REJECTED",
+                "partially_confirmed": "PARTIALLY CONFIRMED",
+                "testing": "IN PROGRESS",
+                "proposed": "PROPOSED",
+            }.get(h["status"], h["status"].upper())
+
+            lines.append(f"### {hid}: {h['text']}\n")
+            lines.append(f"**Status:** {status_badge}\n")
+
+            if h["motivation"]:
+                lines.append(f"**Motivation:** {h['motivation']}\n")
+            if h["expected_outcome"]:
+                lines.append(f"**Expected outcome:** {h['expected_outcome']}\n")
+
+            # Experiments for this hypothesis
+            hyp_exps = [e for e in experiments.values() if e["hypothesis_id"] == hid]
+            if hyp_exps:
+                lines.append("#### Experiments\n")
+                lines.append("| Experiment | Command | Cluster | Status |")
+                lines.append("|---|---|---|---|")
+                for exp in sorted(hyp_exps, key=lambda x: x["id"]):
+                    cmd_short = exp["command"][:60] + ("..." if len(exp["command"]) > 60 else "")
+                    lines.append(f"| {exp['id']} | `{cmd_short}` | {exp['cluster']} | {exp['status']} |")
+                lines.append("")
+
+            # Results for this hypothesis
+            hyp_results = []
+            for exp in hyp_exps:
+                if exp["id"] in results:
+                    for r in results[exp["id"]]:
+                        hyp_results.append({"experiment": exp["id"], **r})
+
+            if hyp_results:
+                lines.append("#### Results\n")
+                # Collect all metric keys
+                all_keys = set()
+                for r in hyp_results:
+                    all_keys.update(r["metrics"].keys())
+                all_keys = sorted(all_keys)
+
+                if all_keys:
+                    header = "| Experiment | " + " | ".join(all_keys) + " |"
+                    sep = "|---|" + "|".join(["---"] * len(all_keys)) + "|"
+                    lines.append(header)
+                    lines.append(sep)
+                    for r in hyp_results:
+                        vals = " | ".join(str(r["metrics"].get(k, "-")) for k in all_keys)
+                        lines.append(f"| {r['experiment']} | {vals} |")
+                    lines.append("")
+
+                # Analyses
+                analyses = [r["analysis"] for r in hyp_results if r.get("analysis")]
+                if analyses:
+                    lines.append("#### Analysis\n")
+                    for a in analyses:
+                        lines.append(f"- {a}")
+                    lines.append("")
+
+            # Conclusion
+            if h["conclusion"]:
+                lines.append(f"**Conclusion:** {h['conclusion']}\n")
+            lines.append("---\n")
+
+        # Summary of findings
+        lines.append("## Summary of Findings\n")
+        confirmed_hyps = [h for h in hypotheses.values() if h["status"] == "confirmed"]
+        partial_hyps = [h for h in hypotheses.values() if h["status"] == "partially_confirmed"]
+        rejected_hyps = [h for h in hypotheses.values() if h["status"] == "rejected"]
+
+        if confirmed_hyps:
+            lines.append("### Confirmed\n")
+            for h in confirmed_hyps:
+                lines.append(f"- **{h['text']}** — {h['conclusion']}")
+            lines.append("")
+
+        if partial_hyps:
+            lines.append("### Partially Confirmed\n")
+            for h in partial_hyps:
+                lines.append(f"- **{h['text']}** — {h['conclusion']}")
+            lines.append("")
+
+        if rejected_hyps:
+            lines.append("### Rejected\n")
+            for h in rejected_hyps:
+                lines.append(f"- **{h['text']}** — {h['conclusion']}")
+            lines.append("")
+
+        # Compute stats
+        lines.append("## Appendix: Compute Statistics\n")
+        lines.append(f"- Total hypotheses: {total_hyp}")
+        lines.append(f"- Total experiments: {total_exp}")
+        lines.append(f"- Total result sets: {total_results}")
+
+        # Count per cluster
+        cluster_counts = {}
+        for exp in experiments.values():
+            c = exp["cluster"]
+            cluster_counts[c] = cluster_counts.get(c, 0) + 1
+        if cluster_counts:
+            lines.append(f"- Clusters used: {', '.join(f'{c} ({n} jobs)' for c, n in sorted(cluster_counts.items()))}")
+        lines.append("")
+
+        # Timeline
+        if timeline:
+            lines.append("### Research Timeline\n")
+            for t in timeline[:50]:  # Cap at 50 entries
+                lines.append(f"- **{t['time']}** — {t['event']}")
+            if len(timeline) > 50:
+                lines.append(f"- ... and {len(timeline) - 50} more events")
+            lines.append("")
+
+        lines.append("---\n")
+        lines.append(f"*Generated by [xgenius](https://github.com/roger-creus/xgenius) — LLM-Oriented Autonomous Research Platform*")
+
+        return "\n".join(lines)
+
     def _regenerate_summary(self) -> None:
         """Regenerate the markdown summary file."""
         ensure_xgenius_dir(self.config)
