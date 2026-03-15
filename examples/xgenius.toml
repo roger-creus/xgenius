@@ -49,7 +49,7 @@ require_singularity = true             # All jobs must run inside a container
 
 [watcher]
 poll_interval_seconds = 60             # How often to check for completed jobs
-trigger_command = "claude --continue"  # Command to wake Claude up
+trigger_command = "claude --continue --dangerously-skip-permissions"  # Command to wake Claude up (must skip permissions for full autonomy)
 
 # ============================================================================
 # CLUSTERS — Define one [clusters.NAME] section per SLURM cluster

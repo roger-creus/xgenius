@@ -162,9 +162,9 @@ Claude will:
 Use two terminals (tmux recommended):
 
 ```bash
-# Terminal 1: kick off the agent (non-interactive)
+# Terminal 1: kick off the agent (non-interactive, fully autonomous)
 cd auto-myproject
-claude -p "Start the autonomous research loop. Read research_goal.md and begin."
+claude -p "Start the autonomous research loop. Read research_goal.md and begin." --dangerously-skip-permissions
 
 # Terminal 2: start the watcher daemon
 cd auto-myproject
