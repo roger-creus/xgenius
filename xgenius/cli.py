@@ -304,8 +304,10 @@ Use `xgenius status --json` to see pending/running jobs with their elapsed time,
 3. Modify code to test the hypothesis
 4. Run `xgenius sync` to push code to cluster
 5. Run `xgenius submit` to start experiments
-6. Wait for `xgenius watch` daemon to trigger you on completion
+6. Exit and wait — the `xgenius watch` daemon (managed by the human) will trigger you on job completion
 7. Analyze results, record findings, iterate
+
+**IMPORTANT: Do NOT run `xgenius watch` yourself. The human manages the watcher daemon in a separate terminal.**
 
 ### Container Build Workflow
 When you need to build/rebuild the container:
