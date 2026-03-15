@@ -309,6 +309,8 @@ Use `xgenius status --json` to see pending/running jobs with their elapsed time,
 
 **IMPORTANT: Do NOT run `xgenius watch` yourself. The human manages the watcher daemon in a separate terminal.**
 
+**IMPORTANT: Distribute jobs across ALL available clusters to maximize throughput.** Check xgenius.toml for configured clusters and spread experiments evenly across them. Do not submit all jobs to a single cluster when multiple are available.
+
 ### Container Build Workflow
 When you need to build/rebuild the container:
 1. Read the Dockerfile and understand what it does
