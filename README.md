@@ -52,43 +52,12 @@ pip install -e .
 
 ### 1. Set up Claude Code auth token
 
-`xgenius watch` needs to invoke `claude --continue -p "..."` non-interactively. This requires a long-lived auth token:
-
 ```bash
 claude setup-token
 ```
-
-**Important:** Make sure you do NOT have an `ANTHROPIC_API_KEY` environment variable set, as it will override your subscription auth and cause failures. Check with:
-
-```bash
-echo $ANTHROPIC_API_KEY
-```
-
-If it's set, remove it:
-```bash
-# If set in conda:
-conda env config vars unset ANTHROPIC_API_KEY
-# If set in shell config:
-# Remove the export line from ~/.bashrc, ~/.zshrc, etc.
-```
-
 ### 2. Set up SSH access to your clusters
 
-You need passwordless SSH access to your SLURM clusters. If your cluster uses MFA (like Alliance Canada), you'll need to request automation access:
-
-1. Generate a dedicated SSH key: `ssh-keygen -t ed25519 -f ~/.ssh/id_xgenius -C "xgenius-automation"`
-2. Upload to your cluster's key management with restrictions (see your cluster's docs)
-3. Add robot node entries to `~/.ssh/config`:
-   ```
-   Host mycluster-robot
-     HostName robot.mycluster.example.com
-     User myusername
-     IdentityFile ~/.ssh/id_xgenius
-     IdentitiesOnly yes
-     PreferredAuthentications publickey
-   ```
-
-For Alliance Canada clusters, see [Automation with MFA](https://docs.alliancecan.ca/wiki/Automation_in_the_context_of_multifactor_authentication/en). Use the `allowed_commands.sh` wrapper — it covers all commands xgenius needs.
+You need passwordless SSH access to your SLURM clusters. 
 
 ## Quick start
 
@@ -113,10 +82,10 @@ Open `research_goal.md` and describe your objective, baselines, success criteria
 
 ### 3. Build and push the container
 
-Open Claude Code in your project directory. Claude will use `xgenius build` to build a Docker image, run tests, and convert to Singularity:
+Open Claude Code in your project directory. Claude will use `xgenius build` to build a Docker image, run tests, and convert to Singularity. Tell Claude:
 
 ```
-You: Build the Singularity container for this project and push it to the cluster.
+Build the Singularity container for this project. Make sure the code runs correctly inside it. Then push it to the cluster.
 ```
 
 Claude will run:
@@ -129,7 +98,7 @@ If any step fails, Claude reads the error, fixes the issue, and retries.
 
 ### 4. Start the watcher daemon
 
-In a separate terminal:
+In a separate terminal (tmux!):
 
 ```bash
 cd my-project
@@ -140,10 +109,10 @@ This runs forever, polling your clusters for completed jobs and triggering `clau
 
 ### 5. Start the research loop
 
-In Claude Code:
+Tell Claude:
 
 ```
-You: Start the autonomous research loop. Read research_goal.md and begin.
+Start the autonomous research loop. Read research_goal.md and begin.
 ```
 
 Claude will:
@@ -211,9 +180,7 @@ Safety is enforced in Python code — Claude cannot bypass it:
 5. **Singularity sandboxing**: All code runs inside containers.
 6. **Audit log**: Every action logged to `.xgenius/audit.jsonl`.
 
-## Commands
-
-All commands support `--json` for structured output.
+## Commands available to Claude
 
 | Command | Purpose |
 |---------|---------|
