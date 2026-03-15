@@ -91,27 +91,31 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
         if verbose:
             print(f"xgenius watch: {msg}")
 
-    def _is_claude_running() -> bool:
-        """Check if a Claude Code process is already running in the project directory."""
-        from xgenius.config import get_project_dir
-        project_dir = get_project_dir(config)
+    # Lock file to prevent concurrent triggers
+    lock_path = os.path.join(xgenius_dir, "watcher.lock")
+
+    def _is_trigger_locked() -> bool:
+        """Check if a previous watcher trigger is still running."""
+        if not os.path.exists(lock_path):
+            return False
+        # Check if the PID in the lock file is still alive
         try:
-            result = subprocess.run(
-                ["pgrep", "-f", f"claude.*{os.path.basename(project_dir)}"],
-                capture_output=True, text=True, timeout=5,
-            )
-            # Also check for any claude process with our project dir as cwd
-            result2 = subprocess.run(
-                ["pgrep", "-af", "claude"],
-                capture_output=True, text=True, timeout=5,
-            )
-            # Filter for claude processes (not xgenius watch, not grep itself)
-            for line in result2.stdout.strip().splitlines():
-                if "claude" in line and "xgenius" not in line and "pgrep" not in line:
-                    return True
+            with open(lock_path) as f:
+                pid = int(f.read().strip())
+            os.kill(pid, 0)  # Check if process exists (doesn't actually kill)
+            return True
+        except (ValueError, ProcessLookupError, PermissionError):
+            # Stale lock — process is gone
+            os.remove(lock_path)
             return False
-        except Exception:
-            return False
+
+    def _acquire_lock():
+        with open(lock_path, "w") as f:
+            f.write(str(os.getpid()))
+
+    def _release_lock():
+        if os.path.exists(lock_path):
+            os.remove(lock_path)
 
     _log(f"Started. Polling every {poll_interval}s.")
     _log(f"Trigger command: {trigger_cmd}")
@@ -120,9 +124,9 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
 
     while True:
         try:
-            # Don't do anything if Claude is already running
-            if _is_claude_running():
-                _log("Claude is already running. Skipping this cycle.")
+            # Don't trigger if a previous trigger is still running
+            if _is_trigger_locked():
+                _log("Previous trigger still running. Skipping this cycle.")
                 time.sleep(poll_interval)
                 continue
 
@@ -156,7 +160,11 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                 project_dir = get_project_dir(config)
                 trigger_parts = trigger_cmd.split()
                 trigger_parts.extend(["-p", prompt])
-                subprocess.run(trigger_parts, cwd=project_dir)
+                _acquire_lock()
+                try:
+                    subprocess.run(trigger_parts, cwd=project_dir)
+                finally:
+                    _release_lock()
                 _log("Claude finished processing disappeared jobs")
                 continue
 
@@ -198,7 +206,11 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                 trigger_parts.extend(["-p", prompt])
 
                 _log("Waiting for Claude to finish processing...")
-                subprocess.run(trigger_parts, cwd=project_dir)
+                _acquire_lock()
+                try:
+                    subprocess.run(trigger_parts, cwd=project_dir)
+                finally:
+                    _release_lock()
                 _log("Claude finished. Resuming polling.")
 
             time.sleep(poll_interval)
