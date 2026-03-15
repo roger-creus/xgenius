@@ -326,9 +326,25 @@ All commands support `--json` for structured output.
 | `xgenius budget` | Show remaining compute budget |
 | `xgenius validate` | Dry-run safety check on a command |
 | `xgenius audit` | View audit log |
-| `xgenius job-history` | View past jobs with walltime and resources |
+| `xgenius job-history` | View past jobs with walltime, resources, and log paths |
+| `xgenius reconcile` | Sync local job tracker with actual SLURM state |
+| `xgenius reset` | Clear all state for a fresh research run |
 | `xgenius watch` | Background daemon (triggers Claude on job completion) |
+
+## Citation
+
+If you use xgenius in your research, please cite it:
+
+```bibtex
+@software{creus2026xgenius,
+  title = {xgenius: LLM-Oriented Autonomous Research Platform for SLURM Clusters},
+  author = {Creus Castanyer, Roger},
+  year = {2026},
+  url = {https://github.com/roger-creus/xgenius},
+  version = {2.0.0}
+}
+```
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.

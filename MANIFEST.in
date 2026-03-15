@@ -1,1 +1,6 @@
-include xgenius/sbatch_templates/*.sbatch
+include LICENSE
+include README.md
+include CITATION.cff
+include CLAUDE.md
+recursive-include xgenius/sbatch_templates *.sbatch
+recursive-include examples *

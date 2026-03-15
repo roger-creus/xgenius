@@ -1,7 +1,41 @@
+# Python
 *.pyc
 __pycache__/
+*.pyo
+*.egg-info/
+*.egg
 build/
 dist/
-*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# xgenius runtime state (per-project, not in package repo)
+.xgenius/
+
+# Singularity/Docker
+*.sif
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Old v1 config files
 cluster_config.json
 run_config.json
+submit_job.sh
