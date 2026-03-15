@@ -80,11 +80,21 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
 
     poll_interval = config.watcher.poll_interval_seconds
     trigger_cmd = config.watcher.trigger_command
+    log_path = os.path.join(xgenius_dir, "watcher.log")
 
-    if verbose:
-        print(f"xgenius watch: Started. Polling every {poll_interval}s.")
-        print(f"xgenius watch: Trigger command: {trigger_cmd}")
-        print(f"xgenius watch: Watching clusters: {list(config.clusters.keys())}")
+    def _log(msg: str) -> None:
+        """Write timestamped message to watcher log and optionally to stdout."""
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        line = f"[{ts}] {msg}"
+        with open(log_path, "a") as f:
+            f.write(line + "\n")
+        if verbose:
+            print(f"xgenius watch: {msg}")
+
+    _log(f"Started. Polling every {poll_interval}s.")
+    _log(f"Trigger command: {trigger_cmd}")
+    _log(f"Watching clusters: {list(config.clusters.keys())}")
+    _log(f"Log file: {log_path}")
 
     while True:
         try:
@@ -92,8 +102,8 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
             recon = job_manager.reconcile()
             reconciled_count = recon.get("reconciled", 0)
             reconciled_ids = recon.get("cancelled_ids", [])
-            if reconciled_count > 0 and verbose:
-                print(f"xgenius watch: Reconciled {reconciled_count} stale job(s): {reconciled_ids}")
+            if reconciled_count > 0:
+                _log(f"Reconciled {reconciled_count} stale job(s): {reconciled_ids}")
 
             # Check how many jobs are still pending
             pending = _load_pending_jobs(xgenius_dir)
@@ -112,34 +122,28 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                     prompt += f"{remaining} job(s) still running/pending.\n"
                 prompt += "Run 'xgenius journal context' for full research state. Investigate and decide next steps."
 
-                if verbose:
-                    print(f"xgenius watch: Triggering Claude for disappeared jobs...")
+                _log(f"Triggering Claude for {reconciled_count} disappeared job(s)")
 
                 from xgenius.config import get_project_dir
                 project_dir = get_project_dir(config)
                 trigger_parts = trigger_cmd.split()
                 trigger_parts.extend(["-p", prompt])
                 subprocess.run(trigger_parts, cwd=project_dir)
-
-                # After Claude finishes, restart the loop
+                _log("Claude finished processing disappeared jobs")
                 continue
 
             if not pending:
-                if verbose:
-                    print("xgenius watch: No pending jobs. Waiting for new submissions...")
                 time.sleep(poll_interval)
                 continue
 
-            if verbose:
-                print(f"xgenius watch: {len(pending)} pending job(s). Checking for completions...")
+            _log(f"{len(pending)} pending job(s). Checking for completions...")
 
             # Check for completions (.done markers)
             completions = job_manager.check_completions()
 
             if completions:
-                if verbose:
-                    for c in completions:
-                        print(f"xgenius watch: Job {c.job_id} completed (exit={c.exit_code})")
+                for c in completions:
+                    _log(f"Job {c.job_id} ({c.experiment_id}) completed (exit={c.exit_code})")
 
                 # Pull results for completed jobs
                 for c in completions:
@@ -148,50 +152,32 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                             cluster_name=c.cluster,
                             job_id=c.job_id,
                         )
-                        if verbose:
-                            print(f"xgenius watch: Pulled results for {c.experiment_id}")
+                        _log(f"Pulled results for {c.experiment_id}")
                     except Exception as e:
-                        if verbose:
-                            print(f"xgenius watch: Failed to pull results for {c.experiment_id}: {e}")
+                        _log(f"Failed to pull results for {c.experiment_id}: {e}")
 
                 # Update pending count
                 remaining = len(_load_pending_jobs(xgenius_dir))
 
                 # Build prompt and trigger Claude
                 prompt = _build_trigger_prompt(completions, remaining)
+                _log(f"Triggering Claude with {len(completions)} completion(s), {remaining} remaining")
 
-                if verbose:
-                    print(f"xgenius watch: Triggering Claude...")
-                    print(f"xgenius watch: Prompt: {prompt[:200]}...")
-
-                # Get the project directory for --cwd
                 from xgenius.config import get_project_dir
                 project_dir = get_project_dir(config)
 
-                # Trigger Claude Code — wait for it to finish before polling again.
-                # This prevents race conditions if Claude is still processing
-                # when more jobs complete. New completions will be picked up
-                # on the next poll cycle after Claude exits.
                 trigger_parts = trigger_cmd.split()
                 trigger_parts.extend(["-p", prompt])
 
-                if verbose:
-                    print("xgenius watch: Waiting for Claude to finish processing...")
-
-                subprocess.run(
-                    trigger_parts,
-                    cwd=project_dir,
-                )
-
-                if verbose:
-                    print("xgenius watch: Claude finished. Resuming polling.")
+                _log("Waiting for Claude to finish processing...")
+                subprocess.run(trigger_parts, cwd=project_dir)
+                _log("Claude finished. Resuming polling.")
 
             time.sleep(poll_interval)
 
         except KeyboardInterrupt:
-            if verbose:
-                print("\nxgenius watch: Stopped by user.")
+            _log("Stopped by user.")
             break
         except Exception as e:
-            print(f"xgenius watch: Error: {e}", file=sys.stderr)
+            _log(f"Error: {e}")
             time.sleep(poll_interval)
