@@ -817,7 +817,7 @@ def cmd_reset(args):
         console.print("Nothing to reset — .xgenius/ directory not found.")
         return
 
-    files_to_clear = ["jobs.jsonl", "journal.jsonl", "journal_summary.md", "audit.jsonl"]
+    files_to_clear = ["jobs.jsonl", "journal.jsonl", "journal_summary.md", "audit.jsonl", "watcher.log"]
     cleared = []
     for fname in files_to_clear:
         fpath = os.path.join(xgenius_dir, fname)
