@@ -346,6 +346,7 @@ def cmd_submit(args):
         experiment_id=args.experiment_id or "",
         hypothesis_id=args.hypothesis_id or "",
         num_gpus=args.gpus,
+        gpu_type=args.gpu_type,
         num_cpus=args.cpus,
         memory=args.memory,
         walltime=args.walltime,
@@ -749,6 +750,7 @@ def main():
     p.add_argument("--experiment-id", default="", help="Experiment identifier")
     p.add_argument("--hypothesis-id", default="", help="Associated hypothesis ID")
     p.add_argument("--gpus", type=int, default=None, help="GPUs (override, must be <= safety max)")
+    p.add_argument("--gpu-type", default=None, help="GPU type e.g. 'h100', 'a100', '3g.20gb' (must be in allowed_gpu_types)")
     p.add_argument("--cpus", type=int, default=None, help="CPUs (override, must be <= safety max)")
     p.add_argument("--memory", default=None, help="Memory e.g. '16G' (override, must be <= safety max)")
     p.add_argument("--walltime", default=None, help="Walltime e.g. '04:00:00' (override, must be <= safety max)")

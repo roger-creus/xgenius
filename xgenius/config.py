@@ -47,6 +47,7 @@ class SafetyConfig:
     max_walltime: str = "24:00:00"
     max_concurrent_jobs: int = 10
     max_total_gpu_hours: float = 500
+    allowed_gpu_types: list[str] = field(default_factory=lambda: [])  # e.g., ["h100", "a100", "3g.20gb"]
     allowed_command_prefixes: list[str] = field(default_factory=lambda: ["python"])
     forbidden_patterns: list[str] = field(default_factory=lambda: [
         "rm -rf", "sudo", "chmod", "chown", "wget", "curl",
@@ -154,6 +155,7 @@ def load_config(path: str = "xgenius.toml") -> XGeniusConfig:
         max_walltime=safety_data.get("max_walltime", "24:00:00"),
         max_concurrent_jobs=safety_data.get("max_concurrent_jobs", 10),
         max_total_gpu_hours=safety_data.get("max_total_gpu_hours", 500),
+        allowed_gpu_types=safety_data.get("allowed_gpu_types", []),
         allowed_command_prefixes=safety_data.get("allowed_command_prefixes", ["python"]),
         forbidden_patterns=safety_data.get("forbidden_patterns", SafetyConfig().forbidden_patterns),
         require_singularity=safety_data.get("require_singularity", True),

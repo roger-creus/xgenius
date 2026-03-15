@@ -139,6 +139,7 @@ class JobManager:
         experiment_id: str = "",
         hypothesis_id: str = "",
         num_gpus: int | None = None,
+        gpu_type: str | None = None,
         num_cpus: int | None = None,
         memory: str | None = None,
         walltime: str | None = None,
@@ -149,9 +150,9 @@ class JobManager:
         Job ID is captured from sbatch output.
         Job is recorded in the tracker.
 
-        Resource overrides (num_gpus, num_cpus, memory, walltime) let Claude
-        request LESS than the cluster defaults. The safety validator ensures
-        they never exceed the max limits in xgenius.toml [safety].
+        Resource overrides let Claude request different resources than the
+        cluster defaults. The safety validator ensures they never exceed
+        the max limits in xgenius.toml [safety].
 
         Args:
             cluster_name: Name of the cluster to submit to.
@@ -159,6 +160,7 @@ class JobManager:
             experiment_id: Unique experiment identifier.
             hypothesis_id: Associated hypothesis ID.
             num_gpus: GPU override (must be <= safety max). Defaults to cluster config.
+            gpu_type: GPU type override e.g. "h100", "3g.20gb" (must be in allowed_gpu_types). Defaults to cluster config.
             num_cpus: CPU override (must be <= safety max). Defaults to cluster config.
             memory: Memory override e.g. "16G" (must be <= safety max). Defaults to cluster config.
             walltime: Walltime override e.g. "04:00:00" (must be <= safety max). Defaults to cluster config.
@@ -172,6 +174,7 @@ class JobManager:
 
         # Apply resource overrides (fall back to cluster defaults)
         effective_gpus = num_gpus if num_gpus is not None else slurm.num_gpus
+        effective_gpu_type = gpu_type if gpu_type is not None else slurm.gpu_type
         effective_cpus = num_cpus if num_cpus is not None else slurm.num_cpus
         effective_memory = memory or slurm.memory
         effective_walltime = walltime or slurm.walltime
@@ -196,11 +199,12 @@ class JobManager:
             num_cpus=effective_cpus,
             memory=effective_memory,
             walltime=effective_walltime,
+            gpu_type=effective_gpu_type,
         )
         self.safety.log_action(
             "validate_job",
-            {"cluster": cluster_name, "gpus": effective_gpus, "cpus": effective_cpus,
-             "memory": effective_memory, "walltime": effective_walltime},
+            {"cluster": cluster_name, "gpus": effective_gpus, "gpu_type": effective_gpu_type,
+             "cpus": effective_cpus, "memory": effective_memory, "walltime": effective_walltime},
             job_result,
         )
         if not job_result.allowed:
@@ -217,8 +221,9 @@ class JobManager:
             return SubmitResult(success=False, cluster=cluster_name, error=str(e))
 
         # Build params with overrides applied
-        params = build_params_from_cluster(cluster)
+        params = build_params_from_cluster(cluster, container_image=self.config.project.container_image)
         params["NUM_GPUS"] = str(effective_gpus)
+        params["GPU_TYPE"] = f"{effective_gpu_type}:" if effective_gpu_type else ""
         params["NUM_CPUS"] = str(effective_cpus)
         params["MEM"] = effective_memory
         params["TIME"] = effective_walltime
@@ -252,7 +257,7 @@ class JobManager:
                 )
 
             # Submit via sbatch
-            submit_result = ssh.run(f"cd {cluster.project_path} && sbatch {remote_script}")
+            submit_result = ssh.run(f"sbatch --chdir='{cluster.project_path}' {remote_script}")
             if not submit_result.success:
                 return SubmitResult(
                     success=False,

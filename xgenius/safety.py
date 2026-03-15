@@ -92,9 +92,18 @@ class SafetyValidator:
         num_cpus: int,
         memory: str,
         walltime: str,
+        gpu_type: str = "",
     ) -> ValidationResult:
         """Validate job resource requests against safety limits."""
         warnings = []
+
+        # Check GPU type is allowed
+        if gpu_type and self.safety.allowed_gpu_types:
+            if gpu_type not in self.safety.allowed_gpu_types:
+                return ValidationResult(
+                    allowed=False,
+                    reason=f"GPU type '{gpu_type}' not in allowed list: {self.safety.allowed_gpu_types}",
+                )
 
         # Check GPU limit
         if num_gpus > self.safety.max_gpus_per_job:
