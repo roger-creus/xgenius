@@ -2,35 +2,26 @@ from setuptools import setup, find_packages
 
 setup(
     name='xgenius',
-    version='0.3.0',
+    version='2.0.0',
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
         'rich',
         'paramiko',
         'scp',
+        'tomli_w',
     ],
     package_data={
-        'xgenius': ['sbatch_templates/*'],  # Include sbatch_templates in the package
+        'xgenius': ['sbatch_templates/*'],
     },
     entry_points={
         'console_scripts': [
             'xgenius=xgenius.cli:main',
-            'xgenius-setup-clusters=xgenius.scripts.setup_clusters:main',
-            'xgenius-setup-runs=xgenius.scripts.generate_run_config:main',
-            'xgenius-build-image=xgenius.scripts.build_image:main',
-            'xgenius-check-jobs=xgenius.scripts.check_jobs:main',
-            'xgenius-cancel-jobs=xgenius.scripts.cancel_jobs:main',
-            'xgenius-pull-results=xgenius.scripts.pull_results:main',
-            'xgenius-pull-repos=xgenius.scripts.pull_repos:main',
-            'xgenius-sync-repos=xgenius.scripts.sync_repos:main',
-            'xgenius-remove-results=xgenius.scripts.remove_results:main',
-            'xgenius-batch-submit=xgenius.scripts.batch_submit:main',
         ],
     },
     author='Roger Creus Castanyer',
     author_email='creus99@gmail.com',
-    description='A tool for managing cluster jobs and configurations',
+    description='LLM-oriented autonomous research platform for SLURM clusters',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     url='https://github.com/roger-creus/xgenius',
@@ -39,4 +30,5 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
     ],
+    python_requires='>=3.11',
 )

@@ -1,193 +1,246 @@
-# xgenius 🚀
+# xgenius
 
-`xgenius` is a command-line tool for managing remote jobs and containerized experiments across multiple clusters. It simplifies the process of building Docker images, converting them to Singularity format, and submitting jobs to clusters using SLURM.
+LLM-oriented autonomous research platform for SLURM clusters.
 
-## Pre-requisites 🛠️
+xgenius enables Claude Code to autonomously run experiments on SLURM clusters: formulate hypotheses, modify code, submit jobs, analyze results, and iterate — with safety guarantees for shared infrastructure.
 
-- You have a working Dockerfile.
-- Singularity installed on your local machine.
-- Docker installed on your local machine.
-- `docker login` works.
-- You have access to the clusters you want to run experiments on.
-- Your project code is also cloned on the clusters.
+## How it works
 
-## Local Set-up 🧩
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Your dev machine                                           │
+│                                                             │
+│  Claude Code ←──── xgenius watch (wakes Claude on job done) │
+│    ↓ calls                         ↑ polls clusters         │
+│  xgenius submit / status / pull / journal / ...             │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ SSH
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  SLURM Cluster (Singularity container, sandboxed)           │
+│  sbatch → job runs → writes .done marker on completion      │
+└─────────────────────────────────────────────────────────────┘
+```
 
-### Installation 🔧
+1. Claude submits experiments via `xgenius submit`
+2. Jobs run on the cluster inside Singularity containers
+3. `xgenius watch` daemon detects completions and triggers `claude --continue`
+4. Claude wakes up, pulls results, analyzes, and iterates
+
+## Prerequisites
+
+- Python 3.11+
+- [Claude Code](https://claude.ai/code) with an active subscription
+- SSH access to at least one SLURM cluster
+- Docker + Singularity/Apptainer (for container builds)
+
+## Installation
 
 ```bash
 pip install xgenius
 ```
 
-### (Optional) Build Singularity Container from Dockerfile 🐳
+Or from source:
 
 ```bash
-xgenius-build-image --dockerfile=/path/to/Dockerfile \
---name=<output_image_name> \
---tag=<tag> \
---registry=<your_docker_username>
+git clone https://github.com/roger-creus/xgenius.git
+cd xgenius
+pip install -e .
 ```
-where `--dockerfile` is the ABSOLUTE path to your Dockerfile.
 
-This command will build a Docker container, push it to your Docker registry, and then pull it to your local machine as a Singularity image. The Singularity image will be saved in the current directory under the name `<output_image_name>.sif` (the `.sif` extension will be added automatically).
+## One-time setup
 
-### Define Environment Variable 🌍
+### 1. Set up Claude Code auth token
 
-First, define the environment variable for the path where SLURM template files will be saved:
+`xgenius watch` needs to invoke `claude --continue -p "..."` non-interactively. This requires a long-lived auth token:
 
 ```bash
-export XGENIUS_TEMPLATES_DIR=/path/to/your/templates
+claude setup-token
 ```
 
-**Recommendation:** `export XGENIUS_TEMPLATES_DIR=<your_project_path>/slurm_templates`
-
-**Recommendation:** Use a Conda environment and set:
+**Important:** Make sure you do NOT have an `ANTHROPIC_API_KEY` environment variable set, as it will override your subscription auth and cause failures. Check with:
 
 ```bash
-conda env config vars set XGENIUS_TEMPLATES_DIR=/path/to/your/templates
+echo $ANTHROPIC_API_KEY
 ```
-This way you can have a different `XGENIUS_TEMPLATES_DIR` for each environment/project.
 
-Otherwise, set the environment variable in your `bashrc` or `~/.zshrc` to make it permanent.
+If it's set, remove it:
+```bash
+# If set in conda:
+conda env config vars unset ANTHROPIC_API_KEY
+# If set in shell config:
+# Remove the export line from ~/.bashrc, ~/.zshrc, etc.
+```
 
-### Set-Up Cluster Configuration 🏗️
+### 2. Set up SSH access to your clusters
 
-Run:
+You need passwordless SSH access to your SLURM clusters. If your cluster uses MFA (like Alliance Canada), you'll need to request automation access:
+
+1. Generate a dedicated SSH key: `ssh-keygen -t ed25519 -f ~/.ssh/id_xgenius -C "xgenius-automation"`
+2. Upload to your cluster's key management with restrictions (see your cluster's docs)
+3. Add robot node entries to `~/.ssh/config`:
+   ```
+   Host mycluster-robot
+     HostName robot.mycluster.example.com
+     User myusername
+     IdentityFile ~/.ssh/id_xgenius
+     IdentitiesOnly yes
+     PreferredAuthentications publickey
+   ```
+
+For Alliance Canada clusters, see [Automation with MFA](https://docs.alliancecan.ca/wiki/Automation_in_the_context_of_multifactor_authentication/en). Use the `allowed_commands.sh` wrapper — it covers all commands xgenius needs.
+
+## Quick start
+
+### 1. Initialize your project
+
+Clone your research codebase and run:
 
 ```bash
-xgenius-setup-clusters
+cd my-project
+xgenius init
 ```
 
-Follow the prompts to configure your cluster settings. You can add as many clusters as you want. Finish by answering 'done' at the end or the config file won’t be saved!
+This interactively creates:
+- `xgenius.toml` — cluster config, SLURM settings, safety limits
+- `research_goal.md` — describe what you want Claude to achieve
+- `.xgenius/` — runtime state directory (auto-gitignored)
+- `CLAUDE.md` — tool documentation for Claude
 
-This creates `cluster_config.json` in the current directory.
+### 2. Edit your research goal
 
-### Set-Up Run Configuration ⚙️
+Open `research_goal.md` and describe your objective, baselines, success criteria, and constraints.
 
-Pass the `cluster_config.json` file path to the following command to create `run_config.json`:
+### 3. Build and push the container
+
+Open Claude Code in your project directory. Claude will use `xgenius build` to build a Docker image, run tests, and convert to Singularity:
+
+```
+You: Build the Singularity container for this project and push it to the cluster.
+```
+
+Claude will run:
+```bash
+xgenius build --json          # docker build → test → singularity convert
+xgenius push-image --cluster mycluster --json  # push + verify on cluster
+```
+
+If any step fails, Claude reads the error, fixes the issue, and retries.
+
+### 4. Start the watcher daemon
+
+In a separate terminal:
 
 ```bash
-xgenius-setup-runs path/to/cluster_config.json
+cd my-project
+xgenius watch
 ```
 
-This creates `run_config.json` with placeholder values. The placeholder values are created according to the associated SLURM template for each cluster in `cluster_config.json`.
+This runs forever, polling your clusters for completed jobs and triggering `claude --continue` to wake Claude up.
 
-You are now all set up! Let’s run some experiments remotely!
+### 5. Start the research loop
 
-**Recommendation:**  If you leave `cluster_config.json` and `run_config.json` in your project directory, running commands will be super easy as you won't need to specify the paths ever again!
+In Claude Code:
 
-## Running Experiments 🧪
-
-1. Push your Singularity image to the clusters you want:
-    ```bash
-    xgenius push-image \
-    --image=path/to/singularity_image.sif \
-    --clusters=cluster1,cluster2,cluster3
-    ```
-
-2. Submit your jobs with:
-    ```bash
-    xgenius submit_jobs \
-    --cluster=cluster1 \
-    --run_command="python test.py" \
-    --pull_repos
-    ```
-
-    Note: The `--pull_repos` flag is optional. It pulls changes from GitHub repositories before running the jobs. Always include it if your code is in a GitHub repository!
-
-Done! Your jobs are now running on the cluster! 🎉
-
-## Batch jobs
-
-You can also submit batch jobs using a JSON config file:
-
-```json
-[
-    {
-        "command": "python test.py --test-arg1=1 --test-arg2=2",
-        "cluster": "cluster1",
-    },
-    {
-        "command": "python test.py --test-arg1=5 --test-arg2=10",
-        "cluster": "cluster2",
-    }
-]
+```
+You: Start the autonomous research loop. Read research_goal.md and begin.
 ```
 
-And running:
+Claude will:
+1. Read `xgenius journal context` for research state
+2. Formulate a hypothesis
+3. Modify code
+4. Sync to cluster and submit experiments
+5. Exit and wait for `xgenius watch` to trigger it on completion
+6. Analyze results, record findings, iterate
 
-```bash
-xgenius-batch-submit --batch-file=/path/to/batch_job.json --pull-repos
+## Configuration
+
+### `xgenius.toml`
+
+```toml
+[project]
+name = "my-research"
+research_goal = "research_goal.md"
+container_image = "my-project.sif"
+dockerfile = "Dockerfile"
+
+[safety]
+max_gpus_per_job = 1
+max_cpus_per_job = 16
+max_memory_per_job = "64G"
+max_walltime = "24:00:00"
+max_concurrent_jobs = 10
+max_total_gpu_hours = 500
+allowed_command_prefixes = ["python"]
+forbidden_patterns = ["rm -rf", "sudo", "chmod", "chown"]
+require_singularity = true
+
+[watcher]
+poll_interval_seconds = 60
+trigger_command = "claude --continue"
+
+[clusters.mycluster]
+hostname = "mycluster.example.com"    # Must match SSH config
+username = "myuser"
+project_path = "/home/myuser/my-project"
+scratch_path = "/scratch/myuser"
+image_path = "/scratch/myuser/images"
+sbatch_template = "slurm_account_template.sbatch"
+
+[clusters.mycluster.slurm]
+account = "my-allocation"
+num_gpus = 1
+num_cpus = 8
+memory = "32G"
+walltime = "12:00:00"
+modules = "apptainer"
+singularity_command = "apptainer"
+output_dir_cluster = "/scratch/myuser/runs"
+output_dir_container = "/results"
 ```
 
-## Utility Commands 🛠️
+### Safety
 
-Check the status of your jobs in all clusters in cluster_config.json:
+Safety is enforced in Python code — Claude cannot bypass it:
 
-```bash
-xgenius-check-jobs
-```
+1. **Command validation**: Only allowed prefixes (e.g., `python`). Shell injection blocked.
+2. **Resource limits**: Max GPUs, CPUs, memory, walltime per job.
+3. **Budget tracking**: Total GPU-hours cap across all experiments.
+4. **Path containment**: Code changes restricted to project directory.
+5. **Singularity sandboxing**: All code runs inside containers.
+6. **Audit log**: Every action logged to `.xgenius/audit.jsonl`.
 
-Cancel all jobs in all clusters in cluster_config.json:
+## Commands
 
-```bash
-xgenius-cancel-jobs
-```
+All commands support `--json` for structured output.
 
-Pull the results of your jobs from all clusters in cluster_config.json:
+| Command | Purpose |
+|---------|---------|
+| `xgenius init` | Initialize project (creates config, research goal, CLAUDE.md) |
+| `xgenius build` | Build Singularity container (docker build → test → convert) |
+| `xgenius push-image` | Push container to cluster and verify |
+| `xgenius verify-image` | Verify container works on cluster |
+| `xgenius submit` | Submit a SLURM job (safety-validated) |
+| `xgenius batch-submit` | Submit multiple jobs from JSON file |
+| `xgenius status` | Check job statuses across clusters |
+| `xgenius cancel` | Cancel specific jobs by ID |
+| `xgenius logs` | Fetch job stdout |
+| `xgenius errors` | Fetch job stderr / crash logs |
+| `xgenius check-completions` | Check for completed jobs |
+| `xgenius sync` | Rsync project code to cluster |
+| `xgenius pull` | Pull results from cluster |
+| `xgenius ls` | List files on cluster |
+| `xgenius journal context` | Full research context for Claude |
+| `xgenius journal summary` | Concise progress summary |
+| `xgenius journal add-hypothesis` | Record a hypothesis |
+| `xgenius journal add-result` | Record experiment results |
+| `xgenius journal update-hypothesis` | Update hypothesis status |
+| `xgenius budget` | Show remaining compute budget |
+| `xgenius validate` | Dry-run safety check on a command |
+| `xgenius audit` | View audit log |
+| `xgenius watch` | Background daemon (triggers Claude on job completion) |
 
-```bash
-xgenius-pull-results
-```
+## License
 
-Remove the output folder in your clusters (useful before running a new batch of experiments)
-
-```bash
-xgenius-remove-results
-```
-
-## Examples 📝
-
-These files are created automatically with the commands above.
-
-### `cluster_config.json`
-
-```bash
-[
-    {
-        "cluster_name": "cluster1",
-        "username": "<your_username>",
-        "image_path": "<cluster1_scratch_folder>", # the path where the Singularity image will be saved in the cluster
-        "project_path": "/path/to/project/code/in/cluster", # the path where your code is in the cluster. same as CODE_DIR_IN_CLUSTER in run_config.json
-        "sbatch_template": "slurm_partition_template.sbatch" # the SLURM template file to use for this cluster. see the templates in the XGENIUS_TEMPLATES_DIR directory
-    },
-    {
-        "cluster_name": "cluster2",
-        "username": "<your_username>",
-        "image_path": "<cluster2_scratch_folder>", 
-        "project_path": "/path/to/project/code/in/cluster", 
-        "sbatch_template": "slurm_partition_template.sbatch" 
-    }
-]
-```
-
-### `run_config.json`
-```bash
-{
-    "cluster1": {
-        "SINGULARITY_COMMAND": "singularity", # or 'apptainer' depending on the cluster
-        "NUM_GPUS": "1",
-        "IMAGE_NAME": "<your_singularity_image_name>.sif",
-        "PARTITION": "<partition_name>",
-        "CODE_DIR_IN_CLUSTER": "/path/to/project/code/in/cluster",
-        "OUTPUT_DIR_IN_CONTAINER": "/path/to/output/dir/in/container", # set this to the directory where your code writes output
-        "TIME": "23:59:00", # for the time limit of the job
-        "MODULES_TO_LOAD": "singularity", # or 'apptainer' depending on the cluster + any other modules
-        "MEM": "12G", # example RAM memory per CPU
-        "OUTPUT_DIR_IN_CLUSTER": "/path/to/cluster/scratch/runs", # your code outputs will be saved here. OUTPUT_DIR_IN_CLUSTER is binded to OUTPUT_DIR_IN_CONTAINER (see the slurm templates)
-        "COMMAND": "python test.py", # the code you want to run
-        "NUM_CPUS": "12", # example CPUs
-        "OUTPUT_FILE": "/path/to/cluster/scratch/slurm-%j.out" # the logs file of the job
-    }
-}
-```
+MIT
