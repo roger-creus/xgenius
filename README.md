@@ -341,7 +341,7 @@ If you use xgenius in your research, please cite it:
   author = {Creus Castanyer, Roger},
   year = {2026},
   url = {https://github.com/roger-creus/xgenius},
-  version = {2.0.0}
+  version = {1.0.0}
 }
 ```
 
