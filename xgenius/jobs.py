@@ -408,38 +408,69 @@ class JobManager:
 
         return results
 
+    def _find_log_path(self, job_id: str) -> str:
+        """Look up the log file path from the job tracker."""
+        jobs_path = os.path.join(self._xgenius_dir, "jobs.jsonl")
+        if not os.path.exists(jobs_path):
+            return ""
+        with open(jobs_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                job = json.loads(line)
+                if job.get("job_id") == job_id and job.get("log_file"):
+                    return job["log_file"]
+        return ""
+
+    def _find_log_path_by_experiment(self, experiment_id: str) -> tuple[str, str, str]:
+        """Look up log file path and cluster by experiment ID. Returns (log_path, job_id, cluster)."""
+        jobs_path = os.path.join(self._xgenius_dir, "jobs.jsonl")
+        if not os.path.exists(jobs_path):
+            return "", "", ""
+        with open(jobs_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                job = json.loads(line)
+                if job.get("experiment_id") == experiment_id:
+                    return job.get("log_file", ""), job.get("job_id", ""), job.get("cluster", "")
+        return "", "", ""
+
     def _find_slurm_log(self, ssh: 'SSHClient', cluster: ClusterConfig, job_id: str, ext: str = "out") -> str:
         """Find a SLURM log file by searching likely paths.
 
-        Returns the path if found, empty string otherwise.
+        First checks the job tracker for the known path, then falls back to searching.
         """
-        # Build list of candidate paths
-        candidates = []
-
-        # From output_file config (replace %j with actual job ID)
-        if cluster.slurm.output_file:
-            configured_path = cluster.slurm.output_file.replace("%j", job_id)
+        # First: check job tracker
+        tracked_path = self._find_log_path(job_id)
+        if tracked_path:
             if ext == "err":
-                configured_path = configured_path.replace(".out", ".err")
-            candidates.append(configured_path)
+                tracked_path = tracked_path.replace(".out", ".err")
+            result = ssh.run(f"test -f {tracked_path} && echo EXISTS", timeout=10)
+            if "EXISTS" in result.stdout:
+                return tracked_path
 
-        # Common locations
-        for base_dir in [cluster.scratch_path, cluster.project_path, f"{cluster.scratch_path}/runs"]:
+        # xgenius-managed log directory
+        log_dir = os.path.join(cluster.scratch_path, ".xgenius", "logs")
+        candidates = [
+            f"{log_dir}/*_{job_id}.{ext}",  # experiment_id_jobid.out pattern
+        ]
+
+        # Also check common SLURM locations
+        for base_dir in [cluster.scratch_path, cluster.project_path]:
             candidates.append(f"{base_dir}/slurm-{job_id}.{ext}")
 
-        # Try each candidate
-        for path in candidates:
-            result = ssh.run(f"test -f {path} && echo EXISTS", timeout=10)
-            if "EXISTS" in result.stdout:
-                return path
-
-        # Last resort: find it
-        result = ssh.run(
-            f"find {cluster.scratch_path} {cluster.project_path} -name 'slurm-{job_id}.{ext}' -maxdepth 3 2>/dev/null | head -1",
-            timeout=15,
-        )
-        if result.success and result.stdout.strip():
-            return result.stdout.strip()
+        for pattern in candidates:
+            if "*" in pattern:
+                result = ssh.run(f"ls {pattern} 2>/dev/null | head -1", timeout=10)
+                if result.success and result.stdout.strip():
+                    return result.stdout.strip()
+            else:
+                result = ssh.run(f"test -f {pattern} && echo EXISTS", timeout=10)
+                if "EXISTS" in result.stdout:
+                    return pattern
 
         return ""
 
@@ -753,6 +784,11 @@ class JobManager:
         ensure_xgenius_dir(self.config)
         jobs_path = os.path.join(self._xgenius_dir, "jobs.jsonl")
 
+        # Compute the log file path (matches what the SBATCH template uses)
+        cluster_config = self._get_cluster(cluster)
+        log_dir = os.path.join(cluster_config.scratch_path, ".xgenius", "logs")
+        log_file = os.path.join(log_dir, f"{experiment_id}_{job_id}.out")
+
         entry = {
             "job_id": job_id,
             "cluster": cluster,
@@ -762,6 +798,7 @@ class JobManager:
             "status": "submitted",
             "submitted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "gpu_hours": 0,
+            "log_file": log_file,
         }
 
         with open(jobs_path, "a") as f:

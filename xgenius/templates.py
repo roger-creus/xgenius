@@ -100,6 +100,15 @@ def render_template(
     """
     rendered = template
 
+    # Set experiment ID first (it may appear inside other params like LOG_FILE)
+    exp_id = experiment_id or "unknown"
+    params["EXPERIMENT_ID"] = exp_id
+
+    # Resolve any nested placeholders in param values (e.g., LOG_FILE contains {{EXPERIMENT_ID}})
+    for key, value in params.items():
+        if "{{EXPERIMENT_ID}}" in str(value):
+            params[key] = str(value).replace("{{EXPERIMENT_ID}}", exp_id)
+
     # Substitute all params
     for key, value in params.items():
         rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
@@ -160,13 +169,13 @@ def build_params_from_cluster(cluster: ClusterConfig, container_image: str = "")
     if slurm.partition:
         params["PARTITION"] = slurm.partition
 
-    # Output file
-    if slurm.output_file:
-        params["OUTPUT_FILE"] = slurm.output_file
-    else:
-        # Default: write SLURM logs to scratch
-        params["OUTPUT_FILE"] = os.path.join(
-            cluster.scratch_path, "slurm-%j.out"
-        )
+    # Log directory and file — all logs go to a predictable xgenius-managed path
+    # The experiment_id and job_id (%j) are embedded in the filename so Claude
+    # can always find logs by experiment name or SLURM job ID.
+    log_dir = os.path.join(cluster.scratch_path, ".xgenius", "logs")
+    params["LOG_DIR"] = log_dir
+    # LOG_FILE uses %j which SLURM replaces with the actual job ID at runtime.
+    # EXPERIMENT_ID is set later in render_template, but we set a default here.
+    params["LOG_FILE"] = os.path.join(log_dir, "{{EXPERIMENT_ID}}_%j.out")
 
     return params

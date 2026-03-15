@@ -458,7 +458,22 @@ def cmd_logs(args):
     from xgenius.jobs import JobManager
 
     manager = JobManager(config)
-    output = manager.logs(args.cluster, args.job_id, lines=args.lines)
+
+    cluster = args.cluster
+    job_id = args.job_id
+
+    # Allow lookup by experiment ID
+    if args.experiment_id:
+        log_path, found_job_id, found_cluster = manager._find_log_path_by_experiment(args.experiment_id)
+        if found_job_id:
+            job_id = job_id or found_job_id
+            cluster = cluster or found_cluster
+
+    if not cluster or not job_id:
+        _output({"error": "Must provide --cluster + --job-id, or --experiment-id"}, args.json)
+        return
+
+    output = manager.logs(cluster, job_id, lines=args.lines)
     _output(output, args.json)
 
 
@@ -470,7 +485,22 @@ def cmd_errors(args):
     from xgenius.jobs import JobManager
 
     manager = JobManager(config)
-    output = manager.errors(args.cluster, args.job_id, lines=args.lines)
+
+    cluster = args.cluster
+    job_id = args.job_id
+
+    # Allow lookup by experiment ID
+    if args.experiment_id:
+        log_path, found_job_id, found_cluster = manager._find_log_path_by_experiment(args.experiment_id)
+        if found_job_id:
+            job_id = job_id or found_job_id
+            cluster = cluster or found_cluster
+
+    if not cluster or not job_id:
+        _output({"error": "Must provide --cluster + --job-id, or --experiment-id"}, args.json)
+        return
+
+    output = manager.errors(cluster, job_id, lines=args.lines)
     _output(output, args.json)
 
 
@@ -831,15 +861,17 @@ def main():
 
     # logs
     p = subparsers.add_parser("logs", parents=[parent_parser], help="Fetch job stdout log")
-    p.add_argument("--cluster", required=True, help="Cluster name")
-    p.add_argument("--job-id", required=True, help="SLURM job ID")
+    p.add_argument("--cluster", default=None, help="Cluster name (optional if using --experiment-id)")
+    p.add_argument("--job-id", default=None, help="SLURM job ID (optional if using --experiment-id)")
+    p.add_argument("--experiment-id", default=None, help="Look up by experiment ID instead of job ID")
     p.add_argument("--lines", type=int, default=200, help="Number of lines")
     p.set_defaults(func=cmd_logs)
 
     # errors
     p = subparsers.add_parser("errors", parents=[parent_parser], help="Fetch job error/crash logs")
-    p.add_argument("--cluster", required=True, help="Cluster name")
-    p.add_argument("--job-id", required=True, help="SLURM job ID")
+    p.add_argument("--cluster", default=None, help="Cluster name (optional if using --experiment-id)")
+    p.add_argument("--job-id", default=None, help="SLURM job ID (optional if using --experiment-id)")
+    p.add_argument("--experiment-id", default=None, help="Look up by experiment ID instead of job ID")
     p.add_argument("--lines", type=int, default=200, help="Number of lines")
     p.set_defaults(func=cmd_errors)
 

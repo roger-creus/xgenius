@@ -5,9 +5,11 @@
 #SBATCH --gres=gpu:{{GPU_TYPE}}{{NUM_GPUS}}
 #SBATCH --time={{TIME}}
 #SBATCH --mem={{MEM}}
-#SBATCH --output={{OUTPUT_FILE}}
+#SBATCH --output={{LOG_FILE}}
+#SBATCH --job-name=xg-{{EXPERIMENT_ID}}
 
 mkdir -p {{OUTPUT_DIR_IN_CLUSTER}}
+mkdir -p {{LOG_DIR}}
 
 module load {{MODULES_TO_LOAD}}
 
