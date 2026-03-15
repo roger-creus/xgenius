@@ -239,9 +239,10 @@ Runtime state is in `.xgenius/` (journal, jobs, audit log).
 - `xgenius batch-submit --file experiments.json` — Submit multiple jobs
 - `xgenius status [--cluster NAME] [--json]` — Check job statuses
 - `xgenius cancel --cluster NAME --job-ids ID1,ID2` — Cancel specific jobs
-- `xgenius logs --cluster NAME --job-id ID` — View job stdout
-- `xgenius errors --cluster NAME --job-id ID` — View job stderr/crashes
+- `xgenius logs --experiment-id ID --json` — View job stdout (can also use --cluster NAME --job-id ID)
+- `xgenius errors --experiment-id ID --json` — View job stderr/crashes/tracebacks (can also use --cluster NAME --job-id ID)
 - `xgenius check-completions [--json]` — Check for newly completed jobs
+- `xgenius reconcile --json` — Sync local job tracker with actual SLURM state (fixes stale jobs)
 
 **Code & Data:**
 - `xgenius sync --cluster NAME` — Rsync project code to cluster
@@ -275,9 +276,17 @@ Typical issues: outdated base images, missing dependencies, wrong Python version
 - `xgenius budget` — Check remaining compute budget
 - `xgenius validate --command "python script.py"` — Dry-run safety check
 - `xgenius audit [--limit N]` — View audit log
-- `xgenius job-history [--limit N] --json` — View past jobs with walltime, resources, and status
+- `xgenius job-history [--limit N] --json` — View past jobs with walltime, resources, log file paths, and status
+- `xgenius reset` — Clear all state for a fresh research run
 
 All commands support `--json` for structured output.
+
+### Debugging Failed Jobs
+When a job fails:
+1. Run `xgenius errors --experiment-id EXPERIMENT_ID --json` to see tracebacks and error messages
+2. Run `xgenius logs --experiment-id EXPERIMENT_ID --json` to see full stdout
+3. Run `xgenius job-history --json` to see all jobs with their log file paths, statuses, and walltimes
+4. Log files are stored at `{scratch}/.xgenius/logs/{experiment_id}_{job_id}.out` on the cluster
 
 ### Resource Management
 The xgenius.toml [safety] section defines MAXIMUM resource limits. You can request LESS:
