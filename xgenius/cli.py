@@ -324,6 +324,7 @@ The `.xgenius/` directory contains all xgenius runtime state:
 - `.xgenius/journal_summary.md` — auto-generated research summary
 - `.xgenius/jobs.jsonl` — job tracker (job IDs, statuses, log file paths)
 - `.xgenius/audit.jsonl` — audit log of all actions
+- `.xgenius/batches/` — archived batch submission files (auto-saved on every batch-submit)
 - `.xgenius/watcher.log` — watcher daemon activity log
 
 **SBATCH templates:** If you need to modify SBATCH job scripts (e.g., add `mkdir -p runs` before the command, change bind mounts), edit the templates in `.xgenius/templates/`. Do NOT modify the xgenius package. The project-local templates take priority.
@@ -404,6 +405,9 @@ def cmd_batch_submit(args):
     config = _load_config(args)
     from xgenius.jobs import JobManager
     from xgenius.journal import ResearchJournal
+    from xgenius.config import get_xgenius_dir, ensure_xgenius_dir
+    import shutil
+    import time as _time
 
     manager = JobManager(config)
     journal = ResearchJournal(config)
@@ -414,6 +418,15 @@ def cmd_batch_submit(args):
     if isinstance(experiments, dict):
         experiments = experiments.get("experiments", [])
 
+    # Archive batch file to .xgenius/batches/ for future reference
+    xgenius_dir = ensure_xgenius_dir(config)
+    batches_dir = os.path.join(xgenius_dir, "batches")
+    os.makedirs(batches_dir, exist_ok=True)
+    timestamp = _time.strftime("%Y%m%d_%H%M%S")
+    batch_name = os.path.basename(args.file).replace(".json", "")
+    archive_path = os.path.join(batches_dir, f"{timestamp}_{batch_name}.json")
+    shutil.copy2(args.file, archive_path)
+
     results = []
     for exp in experiments:
         result = manager.submit(
@@ -421,6 +434,11 @@ def cmd_batch_submit(args):
             command=exp["command"],
             experiment_id=exp.get("experiment_id", ""),
             hypothesis_id=exp.get("hypothesis_id", ""),
+            num_gpus=exp.get("gpus"),
+            gpu_type=exp.get("gpu_type"),
+            num_cpus=exp.get("cpus"),
+            memory=exp.get("memory"),
+            walltime=exp.get("walltime"),
         )
         if result.success and exp.get("hypothesis_id"):
             journal.add_experiment(
