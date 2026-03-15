@@ -186,6 +186,11 @@ Optionally list initial ideas for the agent to consider.
     ensure_xgenius_dir(cfg)
     console.print("[green]Created .xgenius/ directory[/green]")
 
+    # Copy SBATCH templates to project so Claude can customize them
+    from xgenius.templates import copy_templates_to_project
+    templates_dir = copy_templates_to_project(project_dir)
+    console.print(f"[green]Copied SBATCH templates to {templates_dir}[/green] — Claude can customize these.")
+
     # Add .xgenius to .gitignore
     gitignore_path = os.path.join(project_dir, ".gitignore")
     gitignore_entry = ".xgenius/"
@@ -310,6 +315,8 @@ Use `xgenius status --json` to see pending/running jobs with their elapsed time,
 **IMPORTANT: Do NOT run `xgenius watch` yourself. The human manages the watcher daemon in a separate terminal.**
 
 **IMPORTANT: Distribute jobs across ALL available clusters to maximize throughput.** Check xgenius.toml for configured clusters and spread experiments evenly across them. Do not submit all jobs to a single cluster when multiple are available.
+
+**SBATCH templates:** If you need to modify SBATCH job scripts (e.g., add `mkdir -p runs` before the command, change bind mounts), edit the templates in `.xgenius/templates/`. Do NOT modify the xgenius package templates. The project-local templates take priority.
 
 ### Container Build Workflow
 When you need to build/rebuild the container:

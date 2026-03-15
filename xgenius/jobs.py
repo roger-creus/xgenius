@@ -217,7 +217,8 @@ class JobManager:
 
         # Load and render template
         try:
-            template = load_template(cluster.sbatch_template)
+            from xgenius.config import get_project_dir
+            template = load_template(cluster.sbatch_template, project_dir=get_project_dir(self.config))
         except FileNotFoundError as e:
             return SubmitResult(success=False, cluster=cluster_name, error=str(e))
 

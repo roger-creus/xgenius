@@ -27,33 +27,91 @@ exit $XGENIUS_EXIT_CODE
 '''
 
 
-def get_template_dir() -> str:
-    """Get the directory containing SBATCH templates.
-
-    Checks XGENIUS_TEMPLATES_DIR env var, falls back to package templates.
-    """
-    env_dir = os.getenv("XGENIUS_TEMPLATES_DIR")
-    if env_dir and os.path.isdir(env_dir):
-        return env_dir
-
-    # Fall back to package-bundled templates
+def get_package_template_dir() -> str:
+    """Get the package-bundled template directory."""
     return os.path.join(os.path.dirname(__file__), "sbatch_templates")
 
 
-def load_template(template_name: str) -> str:
+def get_project_template_dir(project_dir: str = "") -> str:
+    """Get the project-local template directory (.xgenius/templates/).
+
+    Project templates take priority — Claude can customize these
+    without modifying the xgenius package.
+    """
+    if not project_dir:
+        project_dir = os.getcwd()
+    return os.path.join(project_dir, ".xgenius", "templates")
+
+
+def load_template(template_name: str, project_dir: str = "") -> str:
     """Load an SBATCH template by name.
+
+    Search order:
+    1. Project-local: .xgenius/templates/ (Claude can customize these)
+    2. XGENIUS_TEMPLATES_DIR env var
+    3. Package-bundled templates (read-only fallback)
 
     Args:
         template_name: Filename of the template (e.g., 'slurm_partition_template.sbatch')
+        project_dir: Project directory to search for local templates.
 
     Returns:
         Template content as a string.
 
     Raises:
-        FileNotFoundError: If template doesn't exist.
+        FileNotFoundError: If template doesn't exist in any location.
     """
-    template_dir = get_template_dir()
-    template_path = os.path.join(template_dir, template_name)
+    # 1. Project-local templates (highest priority)
+    local_dir = get_project_template_dir(project_dir)
+    local_path = os.path.join(local_dir, template_name)
+    if os.path.exists(local_path):
+        with open(local_path) as f:
+            return f.read()
+
+    # 2. XGENIUS_TEMPLATES_DIR env var
+    env_dir = os.getenv("XGENIUS_TEMPLATES_DIR")
+    if env_dir and os.path.isdir(env_dir):
+        env_path = os.path.join(env_dir, template_name)
+        if os.path.exists(env_path):
+            with open(env_path) as f:
+                return f.read()
+
+    # 3. Package-bundled templates (fallback)
+    pkg_dir = get_package_template_dir()
+    pkg_path = os.path.join(pkg_dir, template_name)
+
+    if not os.path.exists(pkg_path):
+        searched = [local_dir]
+        if env_dir:
+            searched.append(env_dir)
+        searched.append(pkg_dir)
+        raise FileNotFoundError(
+            f"SBATCH template not found: {template_name}\n"
+            f"Searched: {searched}"
+        )
+
+    with open(pkg_path) as f:
+        return f.read()
+
+
+def copy_templates_to_project(project_dir: str) -> str:
+    """Copy package templates to project's .xgenius/templates/ directory.
+
+    Called by xgenius init. These local copies are what Claude should modify.
+    Returns the path to the project template directory.
+    """
+    pkg_dir = get_package_template_dir()
+    local_dir = get_project_template_dir(project_dir)
+    os.makedirs(local_dir, exist_ok=True)
+
+    import shutil
+    for fname in os.listdir(pkg_dir):
+        if fname.endswith(".sbatch"):
+            src = os.path.join(pkg_dir, fname)
+            dst = os.path.join(local_dir, fname)
+            shutil.copy2(src, dst)
+
+    return local_dir
 
     if not os.path.exists(template_path):
         raise FileNotFoundError(
