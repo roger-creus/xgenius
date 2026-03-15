@@ -408,65 +408,91 @@ class JobManager:
 
         return results
 
+    def _find_slurm_log(self, ssh: 'SSHClient', cluster: ClusterConfig, job_id: str, ext: str = "out") -> str:
+        """Find a SLURM log file by searching likely paths.
+
+        Returns the path if found, empty string otherwise.
+        """
+        # Build list of candidate paths
+        candidates = []
+
+        # From output_file config (replace %j with actual job ID)
+        if cluster.slurm.output_file:
+            configured_path = cluster.slurm.output_file.replace("%j", job_id)
+            if ext == "err":
+                configured_path = configured_path.replace(".out", ".err")
+            candidates.append(configured_path)
+
+        # Common locations
+        for base_dir in [cluster.scratch_path, cluster.project_path, f"{cluster.scratch_path}/runs"]:
+            candidates.append(f"{base_dir}/slurm-{job_id}.{ext}")
+
+        # Try each candidate
+        for path in candidates:
+            result = ssh.run(f"test -f {path} && echo EXISTS", timeout=10)
+            if "EXISTS" in result.stdout:
+                return path
+
+        # Last resort: find it
+        result = ssh.run(
+            f"find {cluster.scratch_path} {cluster.project_path} -name 'slurm-{job_id}.{ext}' -maxdepth 3 2>/dev/null | head -1",
+            timeout=15,
+        )
+        if result.success and result.stdout.strip():
+            return result.stdout.strip()
+
+        return ""
+
     def logs(self, cluster_name: str, job_id: str, lines: int = 200) -> str:
         """Fetch SLURM stdout log for a job.
 
-        Args:
-            cluster_name: Cluster where the job ran.
-            job_id: SLURM job ID.
-            lines: Number of lines to fetch from the end.
-
-        Returns:
-            Log content as string.
+        Searches multiple likely paths to find the log file.
         """
         cluster = self._get_cluster(cluster_name)
         ssh = self._get_ssh(cluster_name)
 
-        # Try the standard output file pattern
-        log_path = os.path.join(
-            os.path.dirname(cluster.slurm.output_file) if cluster.slurm.output_file
-            else cluster.scratch_path,
-            f"slurm-{job_id}.out",
-        )
+        log_path = self._find_slurm_log(ssh, cluster, job_id, "out")
+        if not log_path:
+            return f"No log file found for job {job_id}. Searched scratch and project directories."
 
         result = ssh.run(f"tail -n {lines} {log_path}")
         if result.success:
-            return result.stdout
-        return f"Could not read log: {result.stderr}"
+            return f"[{log_path}]\n{result.stdout}"
+        return f"Found log at {log_path} but could not read it: {result.stderr}"
 
     def errors(self, cluster_name: str, job_id: str, lines: int = 200) -> str:
         """Fetch SLURM stderr / crash logs for a job.
 
-        Args:
-            cluster_name: Cluster where the job ran.
-            job_id: SLURM job ID.
-            lines: Number of lines to fetch from the end.
-
-        Returns:
-            Error log content as string.
+        Searches for .err files, then looks for errors in .out files.
         """
         cluster = self._get_cluster(cluster_name)
         ssh = self._get_ssh(cluster_name)
 
-        # Try .err file first
-        err_path = os.path.join(cluster.scratch_path, f"slurm-{job_id}.err")
-        result = ssh.run(f"tail -n {lines} {err_path} 2>/dev/null")
-        if result.success and result.stdout.strip():
-            return result.stdout
+        parts = []
 
-        # Fall back to checking .out for error content
-        out_path = os.path.join(cluster.scratch_path, f"slurm-{job_id}.out")
-        result = ssh.run(f"grep -i -A5 'error\\|traceback\\|exception\\|failed' {out_path} | tail -n {lines}")
-        if result.success and result.stdout.strip():
-            return result.stdout
+        # Try .err file
+        err_path = self._find_slurm_log(ssh, cluster, job_id, "err")
+        if err_path:
+            result = ssh.run(f"tail -n {lines} {err_path}")
+            if result.success and result.stdout.strip():
+                parts.append(f"[{err_path}]\n{result.stdout}")
 
-        # Check the marker file for exit code
-        marker_path = os.path.join(cluster.scratch_path, f".xgenius/markers/{job_id}.done")
+        # Also check .out for errors (tracebacks, etc.)
+        out_path = self._find_slurm_log(ssh, cluster, job_id, "out")
+        if out_path:
+            result = ssh.run(
+                f"grep -i -A10 'error\\|traceback\\|exception\\|FAILED\\|FileNotFoundError\\|ModuleNotFoundError\\|ImportError\\|RuntimeError' {out_path} | tail -n {lines}"
+            )
+            if result.success and result.stdout.strip():
+                parts.append(f"[errors in {out_path}]\n{result.stdout}")
+
+        # Check completion marker
+        marker_path = f"{cluster.scratch_path}/.xgenius/markers/{job_id}.done"
         result = ssh.run(f"cat {marker_path} 2>/dev/null")
         if result.success and result.stdout.strip():
-            return f"Completion marker:\n{result.stdout}"
+            parts.append(f"[completion marker]\n{result.stdout}")
 
-        return "No error logs found."
+        return "\n\n".join(parts) if parts else f"No error logs found for job {job_id}."
 
     def check_completions(self, cluster_name: str | None = None) -> list[CompletionEvent]:
         """Check for completed jobs by looking for .done marker files.
