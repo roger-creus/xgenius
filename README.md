@@ -84,27 +84,6 @@ Host mycluster
   IdentityFile ~/.ssh/id_ed25519
 ```
 
-**With MFA/automation nodes** (if your cluster requires multi-factor authentication):
-
-Many HPC centers provide automation nodes for non-interactive SSH access. You'll typically need to:
-1. Generate a dedicated SSH key: `ssh-keygen -t ed25519 -f ~/.ssh/id_xgenius -C "xgenius-automation"`
-2. Upload the key with restrictions to your cluster's key management portal
-3. Connect to the automation/robot node instead of the login node
-
-```
-# ~/.ssh/config
-Host mycluster-robot
-  HostName robot.mycluster.example.com
-  User myuser
-  IdentityFile ~/.ssh/id_xgenius
-  IdentitiesOnly yes
-  AddressFamily inet
-```
-
-**Tip:** If you get `Permission denied` with the right key, try adding `AddressFamily inet` to force IPv4 — some clusters reject connections when the source IP doesn't match due to IPv6.
-
-Check your cluster's documentation for automation/robot node setup.
-
 ## Quick start
 
 ### 1. Initialize your project
@@ -263,7 +242,7 @@ output_dir_cluster = "/scratch/myuser/runs"  # Where experiment outputs go
 output_dir_container = "/results"    # Mount point inside the container
 ```
 
-### GPU types and MIG
+### GPU types
 
 Many modern clusters support [Multi-Instance GPU (MIG)](https://docs.nvidia.com/datacenter/tesla/mig-user-guide/), which splits a single GPU into smaller virtual GPUs. This is useful for quick test runs that don't need a full GPU.
 
@@ -276,8 +255,6 @@ xgenius submit --gpu-type "a100_3g.20gb" --walltime "01:00:00" --command "python
 # Full training run on a complete GPU
 xgenius submit --gpu-type "a100" --walltime "12:00:00" --command "python train.py"
 ```
-
-**Important:** MIG type names vary by cluster. Check your cluster's documentation for the exact gres strings (e.g., `a100_3g.20gb` vs `nvidia_a100_80gb_4g.20gb`). Use `available_gpu_types` to list only the types your cluster actually supports.
 
 ### Resource management
 
