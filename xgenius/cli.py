@@ -359,6 +359,8 @@ Use `xgenius status --json` to see pending/running jobs with their elapsed time,
 
 **IMPORTANT: Do NOT run `xgenius watch` yourself. The human manages the watcher daemon in a separate terminal.**
 
+**IMPORTANT: Do NOT run `xgenius reset`. Only the human resets the research state.**
+
 **IMPORTANT: Distribute jobs across ALL available clusters to maximize throughput.** Check xgenius.toml for configured clusters and spread experiments evenly across them. Do not submit all jobs to a single cluster when multiple are available.
 
 **IMPORTANT: You MUST use the xgenius journal for EVERY hypothesis and experiment.** Before submitting any experiments:
