@@ -171,7 +171,7 @@ class SSHClient:
     ) -> SSHResult:
         """Rsync files from local to remote."""
         start = time.monotonic()
-        cmd = ["rsync", "-avz", "--delete"]
+        cmd = ["rsync", "-avz"]
         for excl in (excludes or []):
             cmd.append(f"--exclude={excl}")
         # Ensure trailing slash for directory sync

@@ -681,8 +681,8 @@ class JobManager:
 
         default_excludes = [
             ".git", "__pycache__", "*.pyc", ".xgenius",
-            "results", "*.sif", "node_modules", ".venv",
-            "wandb",
+            "results", "runs", "*.sif", "node_modules", ".venv",
+            "wandb", "*.log",
         ]
         all_excludes = default_excludes + (excludes or [])
 
