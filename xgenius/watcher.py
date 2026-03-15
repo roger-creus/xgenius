@@ -91,6 +91,28 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
         if verbose:
             print(f"xgenius watch: {msg}")
 
+    def _is_claude_running() -> bool:
+        """Check if a Claude Code process is already running in the project directory."""
+        from xgenius.config import get_project_dir
+        project_dir = get_project_dir(config)
+        try:
+            result = subprocess.run(
+                ["pgrep", "-f", f"claude.*{os.path.basename(project_dir)}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Also check for any claude process with our project dir as cwd
+            result2 = subprocess.run(
+                ["pgrep", "-af", "claude"],
+                capture_output=True, text=True, timeout=5,
+            )
+            # Filter for claude processes (not xgenius watch, not grep itself)
+            for line in result2.stdout.strip().splitlines():
+                if "claude" in line and "xgenius" not in line and "pgrep" not in line:
+                    return True
+            return False
+        except Exception:
+            return False
+
     _log(f"Started. Polling every {poll_interval}s.")
     _log(f"Trigger command: {trigger_cmd}")
     _log(f"Watching clusters: {list(config.clusters.keys())}")
@@ -98,6 +120,12 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
 
     while True:
         try:
+            # Don't do anything if Claude is already running
+            if _is_claude_running():
+                _log("Claude is already running. Skipping this cycle.")
+                time.sleep(poll_interval)
+                continue
+
             # Reconcile local tracker with actual SLURM state
             recon = job_manager.reconcile()
             reconciled_count = recon.get("reconciled", 0)
