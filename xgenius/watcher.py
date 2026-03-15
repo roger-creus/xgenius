@@ -140,14 +140,23 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                 from xgenius.config import get_project_dir
                 project_dir = get_project_dir(config)
 
-                # Trigger Claude Code
+                # Trigger Claude Code — wait for it to finish before polling again.
+                # This prevents race conditions if Claude is still processing
+                # when more jobs complete. New completions will be picked up
+                # on the next poll cycle after Claude exits.
                 trigger_parts = trigger_cmd.split()
                 trigger_parts.extend(["-p", prompt])
+
+                if verbose:
+                    print("xgenius watch: Waiting for Claude to finish processing...")
 
                 subprocess.run(
                     trigger_parts,
                     cwd=project_dir,
                 )
+
+                if verbose:
+                    print("xgenius watch: Claude finished. Resuming polling.")
 
             time.sleep(poll_interval)
 
