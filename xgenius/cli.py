@@ -316,7 +316,17 @@ Use `xgenius status --json` to see pending/running jobs with their elapsed time,
 
 **IMPORTANT: Distribute jobs across ALL available clusters to maximize throughput.** Check xgenius.toml for configured clusters and spread experiments evenly across them. Do not submit all jobs to a single cluster when multiple are available.
 
-**SBATCH templates:** If you need to modify SBATCH job scripts (e.g., add `mkdir -p runs` before the command, change bind mounts), edit the templates in `.xgenius/templates/`. Do NOT modify the xgenius package templates. The project-local templates take priority.
+## Project State Directory
+
+The `.xgenius/` directory contains all xgenius runtime state:
+- `.xgenius/templates/` — SBATCH job script templates (you can edit these to customize job behavior)
+- `.xgenius/journal.jsonl` — research journal (hypotheses, experiments, results)
+- `.xgenius/journal_summary.md` — auto-generated research summary
+- `.xgenius/jobs.jsonl` — job tracker (job IDs, statuses, log file paths)
+- `.xgenius/audit.jsonl` — audit log of all actions
+- `.xgenius/watcher.log` — watcher daemon activity log
+
+**SBATCH templates:** If you need to modify SBATCH job scripts (e.g., add `mkdir -p runs` before the command, change bind mounts), edit the templates in `.xgenius/templates/`. Do NOT modify the xgenius package. The project-local templates take priority.
 
 ### Container Build Workflow
 When you need to build/rebuild the container:
