@@ -278,34 +278,31 @@ class ContainerManager:
 
         # Step 3: Verify file exists and check size
         result = ssh.run(f"ls -lh {remote_path}")
+        file_exists = result.success and remote_path.split("/")[-1] in result.stdout
         steps.append({
             "step": "verify file on cluster",
-            "success": result.success,
+            "success": file_exists,
             "detail": result.stdout.strip() if result.success else result.stderr,
         })
 
-        # Step 4: Test-run the container
-        sing_cmd = cluster.slurm.singularity_command
-        modules = cluster.slurm.modules
-        test_cmd = f"module load {modules} 2>/dev/null; {sing_cmd} exec {remote_path} echo 'xgenius-verify-ok'"
-        result = ssh.run(test_cmd)
-        runnable = "xgenius-verify-ok" in result.stdout
-        steps.append({
-            "step": "test-run container",
-            "success": runnable,
-            "detail": result.stdout.strip() if runnable else result.stderr or result.stdout,
-        })
+        # Note: we do NOT test-run the container here because automation nodes
+        # (robot.*) don't allow apptainer/singularity commands. The container
+        # will be tested when the first SBATCH job runs on a compute node.
 
         return {
-            "success": runnable,
+            "success": file_exists,
             "cluster": cluster_name,
             "remote_path": remote_path,
-            "runnable": runnable,
             "steps": steps,
         }
 
     def verify_on_cluster(self, cluster_name: str, image_name: str = "") -> dict:
-        """Verify a Singularity image exists and is runnable on a cluster."""
+        """Verify a Singularity image exists on a cluster.
+
+        Note: we only check file existence and size. We cannot test-run
+        the container from automation nodes (robot.*) because apptainer/singularity
+        is not in the allowed commands. The container runs on compute nodes via SBATCH.
+        """
         cluster = self.config.clusters.get(cluster_name)
         if not cluster:
             return {"success": False, "error": f"Unknown cluster: {cluster_name}"}
@@ -314,23 +311,16 @@ class ContainerManager:
         ssh = SSHClient(cluster)
 
         image_path = os.path.join(cluster.image_path, image_name)
-        result = ssh.run(f"test -f {image_path} && echo EXISTS || echo MISSING")
+        result = ssh.run(f"ls -lh {image_path}")
 
-        if "MISSING" in result.stdout:
+        if not result.success or image_name not in result.stdout:
             return {"success": False, "cluster": cluster_name, "error": f"Image not found at {image_path}"}
 
-        size_result = ssh.run(f"du -h {image_path} | cut -f1")
-        sing_cmd = cluster.slurm.singularity_command
-        modules = cluster.slurm.modules
-        test_result = ssh.run(f"module load {modules} 2>/dev/null; {sing_cmd} exec {image_path} echo 'xgenius-verify-ok'")
-
         return {
-            "success": "xgenius-verify-ok" in test_result.stdout,
+            "success": True,
             "cluster": cluster_name,
             "image_path": image_path,
-            "size": size_result.stdout.strip() if size_result.success else "unknown",
-            "runnable": "xgenius-verify-ok" in test_result.stdout,
-            "error": test_result.stderr if not test_result.success else "",
+            "detail": result.stdout.strip(),
         }
 
 
