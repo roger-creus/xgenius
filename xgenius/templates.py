@@ -9,21 +9,21 @@ import re
 from xgenius.config import ClusterConfig
 
 
-# Epilog injected at the end of every SBATCH script for completion detection
+# Epilog injected at the end of every SBATCH script for completion detection.
+# Uses a trap to ensure the marker is written even on signals (preemption, timeout, OOM).
 COMPLETION_EPILOG = '''
-# --- xgenius completion marker ---
-XGENIUS_EXIT_CODE=$?
-XGENIUS_MARKER_DIR="{{SCRATCH_PATH}}/.xgenius/markers"
-mkdir -p "$XGENIUS_MARKER_DIR"
-cat > "$XGENIUS_MARKER_DIR/$SLURM_JOB_ID.done" <<'XGENIUS_MARKER_EOF'
-{"job_id":"SLURM_JOB_ID_PLACEHOLDER","experiment_id":"{{EXPERIMENT_ID}}","exit_code":XGENIUS_EXIT_CODE_PLACEHOLDER,"cluster":"{{CLUSTER_NAME}}","completed_at":"XGENIUS_TIMESTAMP_PLACEHOLDER","output_dir":"{{OUTPUT_DIR_IN_CLUSTER}}","walltime_seconds":XGENIUS_SECONDS_PLACEHOLDER}
+# --- xgenius completion marker (trap-based) ---
+xgenius_write_marker() {
+    XGENIUS_EXIT_CODE=${1:-$?}
+    XGENIUS_MARKER_DIR="{{SCRATCH_PATH}}/.xgenius/markers"
+    mkdir -p "$XGENIUS_MARKER_DIR" 2>/dev/null
+    cat > "$XGENIUS_MARKER_DIR/$SLURM_JOB_ID.done" <<XGENIUS_MARKER_EOF
+{"job_id":"$SLURM_JOB_ID","experiment_id":"{{EXPERIMENT_ID}}","exit_code":$XGENIUS_EXIT_CODE,"cluster":"{{CLUSTER_NAME}}","completed_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","output_dir":"{{OUTPUT_DIR_IN_CLUSTER}}","walltime_seconds":$SECONDS}
 XGENIUS_MARKER_EOF
-# Fix placeholders with runtime values
-sed -i "s/SLURM_JOB_ID_PLACEHOLDER/$SLURM_JOB_ID/g" "$XGENIUS_MARKER_DIR/$SLURM_JOB_ID.done"
-sed -i "s/XGENIUS_EXIT_CODE_PLACEHOLDER/$XGENIUS_EXIT_CODE/g" "$XGENIUS_MARKER_DIR/$SLURM_JOB_ID.done"
-sed -i "s/XGENIUS_TIMESTAMP_PLACEHOLDER/$(date -u +%Y-%m-%dT%H:%M:%SZ)/g" "$XGENIUS_MARKER_DIR/$SLURM_JOB_ID.done"
-sed -i "s/XGENIUS_SECONDS_PLACEHOLDER/$SECONDS/g" "$XGENIUS_MARKER_DIR/$SLURM_JOB_ID.done"
-exit $XGENIUS_EXIT_CODE
+}
+trap 'xgenius_write_marker 143' SIGTERM  # SLURM sends SIGTERM on preemption/timeout
+trap 'xgenius_write_marker 137' SIGKILL  # OOM killer (may not always fire)
+trap 'xgenius_write_marker $?' EXIT      # Normal exit or crash
 '''
 
 

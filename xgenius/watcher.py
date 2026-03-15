@@ -90,11 +90,39 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
         try:
             # Reconcile local tracker with actual SLURM state
             recon = job_manager.reconcile()
-            if recon["reconciled"] > 0 and verbose:
-                print(f"xgenius watch: Reconciled {recon['reconciled']} stale job(s)")
+            reconciled_count = recon.get("reconciled", 0)
+            reconciled_ids = recon.get("cancelled_ids", [])
+            if reconciled_count > 0 and verbose:
+                print(f"xgenius watch: Reconciled {reconciled_count} stale job(s): {reconciled_ids}")
 
             # Check how many jobs are still pending
             pending = _load_pending_jobs(xgenius_dir)
+
+            # If jobs disappeared from squeue (preempted/killed/timed out),
+            # trigger Claude so it can investigate and resubmit
+            if reconciled_count > 0:
+                remaining = len(pending)
+                prompt = (
+                    f"{reconciled_count} job(s) disappeared from SLURM (preempted, timed out, or killed): "
+                    f"{', '.join(reconciled_ids)}.\n"
+                    f"Run 'xgenius errors --job-id ID --cluster CLUSTER --json' to check what happened.\n"
+                    f"Run 'xgenius logs --job-id ID --cluster CLUSTER --json' to see output.\n"
+                )
+                if remaining > 0:
+                    prompt += f"{remaining} job(s) still running/pending.\n"
+                prompt += "Run 'xgenius journal context' for full research state. Investigate and decide next steps."
+
+                if verbose:
+                    print(f"xgenius watch: Triggering Claude for disappeared jobs...")
+
+                from xgenius.config import get_project_dir
+                project_dir = get_project_dir(config)
+                trigger_parts = trigger_cmd.split()
+                trigger_parts.extend(["-p", prompt])
+                subprocess.run(trigger_parts, cwd=project_dir)
+
+                # After Claude finishes, restart the loop
+                continue
 
             if not pending:
                 if verbose:
@@ -105,7 +133,7 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
             if verbose:
                 print(f"xgenius watch: {len(pending)} pending job(s). Checking for completions...")
 
-            # Check for completions
+            # Check for completions (.done markers)
             completions = job_manager.check_completions()
 
             if completions:
