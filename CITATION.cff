@@ -3,6 +3,7 @@ message: "If you use this software, please cite it using the following metadata.
 title: "xgenius: LLM-Oriented Autonomous Research Platform for SLURM Clusters"
 version: 1.0.0
 date-released: "2026-03-15"
+doi: "10.5281/zenodo.19038735"
 repository-code: "https://github.com/roger-creus/xgenius"
 license: "MIT"
 authors:

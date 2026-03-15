@@ -341,9 +341,12 @@ If you use xgenius in your research, please cite it:
   author = {Creus Castanyer, Roger},
   year = {2026},
   url = {https://github.com/roger-creus/xgenius},
+  doi = {10.5281/zenodo.19038735},
   version = {1.0.0}
 }
 ```
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19038735.svg)](https://doi.org/10.5281/zenodo.19038735)
 
 ## License
 
