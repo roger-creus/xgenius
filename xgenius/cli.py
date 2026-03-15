@@ -193,18 +193,24 @@ Optionally list initial ideas for the agent to consider.
 
     # Add .xgenius to .gitignore
     gitignore_path = os.path.join(project_dir, ".gitignore")
-    gitignore_entry = ".xgenius/"
+    # Gitignore: keep transient files out, but commit journal/jobs for research history
+    xgenius_gitignore = """
+# xgenius — transient state (don't commit)
+.xgenius/markers/
+.xgenius/watcher.log
+*.sif
+"""
     if os.path.exists(gitignore_path):
         with open(gitignore_path) as f:
             content = f.read()
-        if gitignore_entry not in content:
+        if ".xgenius/markers/" not in content:
             with open(gitignore_path, "a") as f:
-                f.write(f"\n# xgenius state\n{gitignore_entry}\n")
-            console.print("[green]Added .xgenius/ to .gitignore[/green]")
+                f.write(xgenius_gitignore)
+            console.print("[green]Updated .gitignore for xgenius[/green]")
     else:
         with open(gitignore_path, "w") as f:
-            f.write(f"# xgenius state\n{gitignore_entry}\n")
-        console.print("[green]Created .gitignore with .xgenius/[/green]")
+            f.write(xgenius_gitignore)
+        console.print("[green]Created .gitignore for xgenius[/green]")
 
     # Create/append CLAUDE.md with tool documentation
     _write_claude_md(project_dir)
@@ -229,6 +235,31 @@ def _write_claude_md(project_dir: str):
 This project uses xgenius for autonomous research on SLURM clusters.
 Configuration is in `xgenius.toml`. Research goal is in `research_goal.md`.
 Runtime state is in `.xgenius/` (journal, jobs, audit log).
+
+### Git Conventions
+
+You MUST commit and push your work regularly. Every meaningful change should be committed. Use these prefixes:
+
+```
+baseline: <description>        — Running/recording baseline experiments
+hypothesis(ID): <description>  — Implementing a hypothesis (e.g., hypothesis(h003): add spectral norm to value net)
+result(ID): <description>      — Recording results for a hypothesis
+engineering: <description>     — Non-research improvements (better architecture, optimizer swap, etc.)
+fix: <description>             — Bug fixes (broken training, container issues, etc.)
+revert(ID): <description>     — Reverting a hypothesis that didn't work
+ablation(ID): <description>    — Ablation study for a hypothesis
+config: <description>          — Configuration changes (xgenius.toml, SBATCH templates, etc.)
+container: <description>       — Dockerfile or container changes
+docs: <description>            — Documentation updates
+```
+
+**Rules:**
+- Commit BEFORE submitting experiments (so the cluster runs the committed code)
+- Commit AFTER recording results (so the journal state is preserved)
+- Push after every commit — this repo is your research record
+- Never force push or rewrite history
+- If a hypothesis breaks things, use `git revert` to undo it cleanly
+- Keep .xgenius/ state files committed (journal, jobs) so the research history is preserved in git
 
 ### Available Commands
 

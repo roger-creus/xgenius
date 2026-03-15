@@ -86,20 +86,46 @@ Host mycluster
 
 ## Quick start
 
-### 1. Initialize your project
+### 1. Create a dedicated research repo
 
-Clone your research codebase and run:
+**Important:** Claude needs push access to the repo. Create a **new repo** for your research (do NOT fork — Claude might accidentally PR upstream).
 
 ```bash
-cd my-project
+# Option A: Start from an existing codebase
+mkdir auto-myproject
+cp -r original-project/* auto-myproject/
+cd auto-myproject
+git init
+git add -A
+git commit -m "initial: import codebase"
+# Create repo on GitHub, then:
+git remote add origin git@github.com:yourusername/auto-myproject.git
+git push -u origin main
+
+# Option B: Start fresh
+mkdir auto-myproject
+cd auto-myproject
+git init
+# ... add your code ...
+```
+
+**Requirements:**
+- Claude must be able to `git push` — use SSH keys or `gh auth login`
+- `gh` CLI should be installed (`brew install gh` / `sudo apt install gh`)
+- The repo should be private if your research is pre-publication
+
+### 2. Initialize xgenius
+
+```bash
+cd auto-myproject
 xgenius init
 ```
 
 This interactively creates:
 - `xgenius.toml` — cluster config, SLURM settings, safety limits
 - `research_goal.md` — describe what you want Claude to achieve
-- `.xgenius/` — runtime state directory (auto-gitignored)
-- `CLAUDE.md` — tool documentation for Claude
+- `.xgenius/` — runtime state directory with templates, journal, job tracker
+- `CLAUDE.md` — tool documentation and git conventions for Claude
 
 ### 2. Configure `xgenius.toml`
 
