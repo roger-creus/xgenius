@@ -1,0 +1,115 @@
+# xgenius.toml — Example configuration
+#
+# This file is created by `xgenius init` and lives in your project root.
+# Humans edit this file. Claude reads it but cannot modify it.
+#
+# Three sections:
+#   [project]  — project metadata
+#   [safety]   — resource limits and command restrictions (the ceiling Claude cannot exceed)
+#   [clusters] — one section per SLURM cluster with connection info and default job parameters
+
+# ============================================================================
+# PROJECT
+# ============================================================================
+
+[project]
+name = "my-research"                   # Project name (used in logging)
+research_goal = "research_goal.md"     # Path to research goal file (Claude reads this)
+container_image = "my-project.sif"     # Singularity image filename
+dockerfile = "Dockerfile"             # Path to Dockerfile for container builds
+
+# ============================================================================
+# SAFETY — Maximum limits Claude cannot exceed
+# ============================================================================
+# These are hard ceilings. Claude can request LESS via --gpus, --cpus,
+# --memory, --walltime, --gpu-type flags on xgenius submit.
+
+[safety]
+max_gpus_per_job = 4                   # Max GPUs per single job
+max_cpus_per_job = 32                  # Max CPUs per single job
+max_memory_per_job = "128G"            # Max RAM per job
+max_walltime = "48:00:00"             # Max walltime per job
+max_concurrent_jobs = 50               # Max jobs running/pending at once
+max_total_gpu_hours = 10000            # Total GPU-hours budget across all experiments
+
+# Commands Claude is allowed to run inside the container
+allowed_command_prefixes = ["python"]
+
+# Patterns that are always blocked (shell injection protection)
+forbidden_patterns = [
+    "rm -rf", "sudo", "chmod", "chown", "wget", "curl",
+    "mkfs", "dd ", "shutdown", "reboot", "kill -9",
+]
+
+require_singularity = true             # All jobs must run inside a container
+
+# ============================================================================
+# WATCHER — Background daemon that triggers Claude on job completion
+# ============================================================================
+
+[watcher]
+poll_interval_seconds = 60             # How often to check for completed jobs
+trigger_command = "claude --continue"  # Command to wake Claude up
+
+# ============================================================================
+# CLUSTERS — Define one [clusters.NAME] section per SLURM cluster
+# ============================================================================
+# Each cluster needs:
+#   - SSH connection info (hostname must match your ~/.ssh/config)
+#   - Paths on the cluster (project code, scratch space, container storage)
+#   - SLURM parameters (account, GPU type, resources)
+#
+# The [clusters.NAME.slurm] section defines DEFAULT job parameters.
+# Claude can override these per-job (within the [safety] limits above).
+
+# --- Example: GPU cluster with full GPUs and MIG support ---
+
+[clusters.mycluster]
+hostname = "mycluster"                 # Must match ~/.ssh/config Host entry
+username = "myuser"                    # SSH username
+project_path = "/home/myuser/project"  # Where project code lives on cluster (absolute path)
+scratch_path = "/scratch/myuser"       # Scratch space for outputs and state (absolute path)
+image_path = "/scratch/myuser/images"  # Where .sif container images are stored
+sbatch_template = "slurm_account_template.sbatch"  # "slurm_account_template.sbatch" or "slurm_partition_template.sbatch"
+
+[clusters.mycluster.slurm]
+account = "my-allocation"              # SLURM account (for --account). Leave "" if using partition instead.
+partition = ""                         # SLURM partition (for --partition). Leave "" if using account instead.
+num_gpus = 1                           # Default GPUs per job
+gpu_type = "a100"                      # Default GPU type (e.g., "a100", "h100", "v100"). Leave "" for any GPU.
+available_gpu_types = [                # All GPU types Claude can choose from on this cluster
+    "a100",                            # Full A100 GPU
+    "a100_3g.20gb",                    # MIG: 3/8 of A100, 20GB VRAM (good for quick tests)
+    "a100_4g.20gb",                    # MIG: 4/8 of A100, 20GB VRAM
+]
+num_cpus = 8                           # Default CPUs per job
+memory = "32G"                         # Default RAM per job
+walltime = "12:00:00"                  # Default walltime per job
+modules = "apptainer"                  # Modules to load (space-separated)
+singularity_command = "apptainer"      # "singularity" or "apptainer" depending on cluster
+output_dir_cluster = "/scratch/myuser/runs"  # Where experiment outputs go on the cluster
+output_dir_container = "/results"      # Mount point inside the container for outputs
+
+# --- Example: Second cluster with different GPUs ---
+
+# [clusters.othercluster]
+# hostname = "othercluster"
+# username = "myuser"
+# project_path = "/home/myuser/project"
+# scratch_path = "/scratch/myuser"
+# image_path = "/scratch/myuser/images"
+# sbatch_template = "slurm_partition_template.sbatch"
+#
+# [clusters.othercluster.slurm]
+# account = ""
+# partition = "gpu"
+# num_gpus = 1
+# gpu_type = "v100"
+# available_gpu_types = ["v100", "t4"]
+# num_cpus = 4
+# memory = "16G"
+# walltime = "08:00:00"
+# modules = "singularity cuda"
+# singularity_command = "singularity"
+# output_dir_cluster = "/scratch/myuser/runs"
+# output_dir_container = "/results"

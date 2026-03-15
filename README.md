@@ -52,12 +52,58 @@ pip install -e .
 
 ### 1. Set up Claude Code auth token
 
+`xgenius watch` needs to invoke `claude --continue` non-interactively. This requires a long-lived auth token:
+
 ```bash
 claude setup-token
 ```
+
+**Important:** Make sure you do NOT have an `ANTHROPIC_API_KEY` environment variable set, as it overrides subscription auth and causes failures:
+
+```bash
+# Check if set:
+echo $ANTHROPIC_API_KEY
+
+# If set in conda:
+conda env config vars unset ANTHROPIC_API_KEY
+
+# If set in shell config, remove the export line from ~/.bashrc or ~/.zshrc
+```
+
 ### 2. Set up SSH access to your clusters
 
-You need passwordless SSH access to your SLURM clusters. 
+xgenius connects to clusters via SSH. You need passwordless SSH key authentication.
+
+**Basic setup** (if your cluster doesn't require MFA):
+
+```
+# ~/.ssh/config
+Host mycluster
+  HostName mycluster.example.com
+  User myuser
+  IdentityFile ~/.ssh/id_ed25519
+```
+
+**With MFA/automation nodes** (if your cluster requires multi-factor authentication):
+
+Many HPC centers provide automation nodes for non-interactive SSH access. You'll typically need to:
+1. Generate a dedicated SSH key: `ssh-keygen -t ed25519 -f ~/.ssh/id_xgenius -C "xgenius-automation"`
+2. Upload the key with restrictions to your cluster's key management portal
+3. Connect to the automation/robot node instead of the login node
+
+```
+# ~/.ssh/config
+Host mycluster-robot
+  HostName robot.mycluster.example.com
+  User myuser
+  IdentityFile ~/.ssh/id_xgenius
+  IdentitiesOnly yes
+  AddressFamily inet
+```
+
+**Tip:** If you get `Permission denied` with the right key, try adding `AddressFamily inet` to force IPv4 — some clusters reject connections when the source IP doesn't match due to IPv6.
+
+Check your cluster's documentation for automation/robot node setup.
 
 ## Quick start
 
@@ -76,29 +122,39 @@ This interactively creates:
 - `.xgenius/` — runtime state directory (auto-gitignored)
 - `CLAUDE.md` — tool documentation for Claude
 
-### 2. Edit your research goal
+### 2. Configure `xgenius.toml`
 
-Open `research_goal.md` and describe your objective, baselines, success criteria, and constraints.
+The config file has three sections. **Read the [Configuration Guide](#configuration-guide) below carefully** — getting this right is critical.
 
-### 3. Build and push the container
+Key things to set:
+- **`[safety]`** — maximum resource limits Claude cannot exceed
+- **`[clusters.NAME]`** — SSH hostname (must match `~/.ssh/config`), paths on the cluster
+- **`[clusters.NAME.slurm]`** — default SLURM parameters and available GPU types
 
-Open Claude Code in your project directory. Claude will use `xgenius build` to build a Docker image, run tests, and convert to Singularity. Tell Claude:
+See [`examples/xgenius.toml`](examples/xgenius.toml) for a fully commented example.
+
+### 3. Edit your research goal
+
+Open `research_goal.md` and describe your objective, baselines, success criteria, and constraints. Be specific — this is what Claude reads to decide what experiments to run.
+
+### 4. Build and push the container
+
+Open Claude Code in your project directory and tell it:
 
 ```
 Build the Singularity container for this project. Make sure the code runs correctly inside it. Then push it to the cluster.
 ```
 
-Claude will run:
-```bash
-xgenius build --json          # docker build → test → singularity convert
-xgenius push-image --cluster mycluster --json  # push + verify on cluster
-```
+Claude will:
+- Examine the Dockerfile and fix issues (outdated base images, missing deps)
+- Run `xgenius build --json` (docker build → test → singularity convert)
+- Run `xgenius push-image --cluster NAME --json` (push + verify on cluster)
 
-If any step fails, Claude reads the error, fixes the issue, and retries.
+**Important:** The container should contain only dependencies (CUDA, Python, pip packages), NOT source code. Code is synced separately via `xgenius sync` and mounted at runtime.
 
-### 4. Start the watcher daemon
+### 5. Start the watcher daemon
 
-In a separate terminal (tmux!):
+In a separate terminal (use tmux or screen):
 
 ```bash
 cd my-project
@@ -107,9 +163,9 @@ xgenius watch
 
 This runs forever, polling your clusters for completed jobs and triggering `claude --continue` to wake Claude up.
 
-### 5. Start the research loop
+### 6. Start the research loop
 
-Tell Claude:
+In Claude Code:
 
 ```
 Start the autonomous research loop. Read research_goal.md and begin.
@@ -123,74 +179,161 @@ Claude will:
 5. Exit and wait for `xgenius watch` to trigger it on completion
 6. Analyze results, record findings, iterate
 
-## Configuration
+## Configuration Guide
 
-### `xgenius.toml`
+### `xgenius.toml` structure
+
+The config has four sections. See [`examples/xgenius.toml`](examples/xgenius.toml) for a fully commented example.
+
+#### `[project]` — Project metadata
 
 ```toml
 [project]
-name = "my-research"
-research_goal = "research_goal.md"
-container_image = "my-project.sif"
-dockerfile = "Dockerfile"
-
-[safety]
-max_gpus_per_job = 1
-max_cpus_per_job = 16
-max_memory_per_job = "64G"
-max_walltime = "24:00:00"
-max_concurrent_jobs = 10
-max_total_gpu_hours = 500
-allowed_command_prefixes = ["python"]
-forbidden_patterns = ["rm -rf", "sudo", "chmod", "chown"]
-require_singularity = true
-
-[watcher]
-poll_interval_seconds = 60
-trigger_command = "claude --continue"
-
-[clusters.mycluster]
-hostname = "mycluster.example.com"    # Must match SSH config
-username = "myuser"
-project_path = "/home/myuser/my-project"
-scratch_path = "/scratch/myuser"
-image_path = "/scratch/myuser/images"
-sbatch_template = "slurm_account_template.sbatch"
-
-[clusters.mycluster.slurm]
-account = "my-allocation"
-num_gpus = 1
-num_cpus = 8
-memory = "32G"
-walltime = "12:00:00"
-modules = "apptainer"
-singularity_command = "apptainer"
-output_dir_cluster = "/scratch/myuser/runs"
-output_dir_container = "/results"
+name = "my-research"                 # Project name
+research_goal = "research_goal.md"   # Path to research goal (Claude reads this)
+container_image = "my-project.sif"   # Singularity image filename
+dockerfile = "Dockerfile"            # Path to Dockerfile
 ```
 
-### Safety
+#### `[safety]` — Hard limits Claude cannot exceed
+
+These are **maximums**. Claude can request less per-job via `--gpus`, `--cpus`, `--memory`, `--walltime` flags. Set these to the most you'd ever want a single job to use.
+
+```toml
+[safety]
+max_gpus_per_job = 4                 # Max GPUs per single job
+max_cpus_per_job = 32                # Max CPUs per single job
+max_memory_per_job = "128G"          # Max RAM per job
+max_walltime = "48:00:00"            # Max walltime per job
+max_concurrent_jobs = 50             # Max jobs running/pending at once
+max_total_gpu_hours = 10000          # Total GPU-hours budget across all experiments
+allowed_command_prefixes = ["python"] # Only allow running Python scripts
+forbidden_patterns = [               # Always blocked (shell injection protection)
+    "rm -rf", "sudo", "chmod", "chown", "wget", "curl",
+    "mkfs", "dd ", "shutdown", "reboot", "kill -9",
+]
+require_singularity = true           # All jobs must run inside a container
+```
+
+#### `[watcher]` — Background daemon settings
+
+```toml
+[watcher]
+poll_interval_seconds = 60           # How often to check for completed jobs
+trigger_command = "claude --continue" # Command to wake Claude up
+```
+
+#### `[clusters.NAME]` — One section per SLURM cluster
+
+You can define multiple clusters. Claude will submit jobs to whichever cluster you configure.
+
+```toml
+[clusters.mycluster]
+hostname = "mycluster"               # MUST match a Host entry in ~/.ssh/config
+username = "myuser"                  # SSH username on the cluster
+project_path = "/home/myuser/project" # Where project code lives (absolute path)
+scratch_path = "/scratch/myuser"     # Scratch space for outputs/state (absolute path)
+image_path = "/scratch/myuser/images" # Where .sif container images are stored
+sbatch_template = "slurm_account_template.sbatch"
+# Use "slurm_account_template.sbatch" if your cluster uses --account
+# Use "slurm_partition_template.sbatch" if your cluster uses --partition
+```
+
+#### `[clusters.NAME.slurm]` — Default SLURM parameters
+
+These are **defaults** — used when Claude doesn't specify overrides. Claude can request different values per-job within the `[safety]` limits.
+
+```toml
+[clusters.mycluster.slurm]
+account = "my-allocation"            # SLURM account (--account). Leave "" if using partition.
+partition = ""                       # SLURM partition (--partition). Leave "" if using account.
+num_gpus = 1                         # Default GPUs per job
+gpu_type = "a100"                    # Default GPU type. Leave "" for any GPU.
+available_gpu_types = [              # All GPU types Claude can pick from on this cluster
+    "a100",                          # Full A100
+    "a100_3g.20gb",                  # MIG: 3/8 of A100 (good for quick tests)
+    "v100",                          # Older GPU (cheaper/faster to schedule)
+]
+num_cpus = 8                         # Default CPUs per job
+memory = "32G"                       # Default RAM per job
+walltime = "12:00:00"                # Default walltime per job
+modules = "apptainer"                # Modules to load before running container
+singularity_command = "apptainer"    # "singularity" or "apptainer"
+output_dir_cluster = "/scratch/myuser/runs"  # Where experiment outputs go
+output_dir_container = "/results"    # Mount point inside the container
+```
+
+### GPU types and MIG
+
+Many modern clusters support [Multi-Instance GPU (MIG)](https://docs.nvidia.com/datacenter/tesla/mig-user-guide/), which splits a single GPU into smaller virtual GPUs. This is useful for quick test runs that don't need a full GPU.
+
+Configure `available_gpu_types` per-cluster with all GPU types available on that cluster. Claude can then choose the right GPU for each job:
+
+```bash
+# Quick test on a MIG slice (smaller, faster to schedule)
+xgenius submit --gpu-type "a100_3g.20gb" --walltime "01:00:00" --command "python test.py"
+
+# Full training run on a complete GPU
+xgenius submit --gpu-type "a100" --walltime "12:00:00" --command "python train.py"
+```
+
+**Important:** MIG type names vary by cluster. Check your cluster's documentation for the exact gres strings (e.g., `a100_3g.20gb` vs `nvidia_a100_80gb_4g.20gb`). Use `available_gpu_types` to list only the types your cluster actually supports.
+
+### Resource management
+
+Claude can override defaults per-job using flags on `xgenius submit`:
+
+| Flag | Description | Example |
+|------|-------------|---------|
+| `--gpus N` | Number of GPUs | `--gpus 1` |
+| `--gpu-type TYPE` | GPU model/MIG slice | `--gpu-type "a100_3g.20gb"` |
+| `--cpus N` | Number of CPUs | `--cpus 4` |
+| `--memory SIZE` | RAM | `--memory "16G"` |
+| `--walltime TIME` | Job duration | `--walltime "02:00:00"` |
+
+Claude uses `xgenius job-history --json` to learn how long past jobs took and adjusts future requests accordingly. `xgenius status --json` shows pending times and queue reasons so Claude can make smart scheduling decisions.
+
+### Multiple clusters
+
+Define multiple clusters to let Claude distribute jobs across them:
+
+```toml
+[clusters.fast-cluster]
+hostname = "fast-robot"
+# ... (GPU cluster for training)
+
+[clusters.test-cluster]
+hostname = "test-robot"
+# ... (smaller cluster for quick tests)
+```
+
+Claude will see all configured clusters and can choose which to submit to based on availability and GPU types.
+
+## Safety
 
 Safety is enforced in Python code — Claude cannot bypass it:
 
 1. **Command validation**: Only allowed prefixes (e.g., `python`). Shell injection blocked.
-2. **Resource limits**: Max GPUs, CPUs, memory, walltime per job.
-3. **Budget tracking**: Total GPU-hours cap across all experiments.
-4. **Path containment**: Code changes restricted to project directory.
-5. **Singularity sandboxing**: All code runs inside containers.
-6. **Audit log**: Every action logged to `.xgenius/audit.jsonl`.
+2. **Resource limits**: Max GPUs, CPUs, memory, walltime per job (from `[safety]`).
+3. **GPU type validation**: Only GPU types listed in `available_gpu_types` are allowed.
+4. **Budget tracking**: Total GPU-hours cap across all experiments.
+5. **Path containment**: Code changes restricted to project directory.
+6. **Singularity sandboxing**: All code runs inside containers.
+7. **Audit log**: Every action logged to `.xgenius/audit.jsonl`.
 
-## Commands available to Claude
+## Commands
+
+All commands support `--json` for structured output.
 
 | Command | Purpose |
 |---------|---------|
 | `xgenius init` | Initialize project (creates config, research goal, CLAUDE.md) |
 | `xgenius build` | Build Singularity container (docker build → test → convert) |
 | `xgenius push-image` | Push container to cluster and verify |
-| `xgenius verify-image` | Verify container works on cluster |
-| `xgenius submit` | Submit a SLURM job (safety-validated) |
+| `xgenius verify-image` | Verify container exists on cluster |
+| `xgenius submit` | Submit a SLURM job (safety-validated, resource overrides) |
 | `xgenius batch-submit` | Submit multiple jobs from JSON file |
-| `xgenius status` | Check job statuses across clusters |
+| `xgenius status` | Check job statuses (elapsed time, pending reason, resources) |
 | `xgenius cancel` | Cancel specific jobs by ID |
 | `xgenius logs` | Fetch job stdout |
 | `xgenius errors` | Fetch job stderr / crash logs |
@@ -206,6 +349,7 @@ Safety is enforced in Python code — Claude cannot bypass it:
 | `xgenius budget` | Show remaining compute budget |
 | `xgenius validate` | Dry-run safety check on a command |
 | `xgenius audit` | View audit log |
+| `xgenius job-history` | View past jobs with walltime and resources |
 | `xgenius watch` | Background daemon (triggers Claude on job completion) |
 
 ## License
