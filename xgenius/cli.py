@@ -361,6 +361,12 @@ Use `xgenius status --json` to see pending/running jobs with their elapsed time,
 
 **IMPORTANT: Distribute jobs across ALL available clusters to maximize throughput.** Check xgenius.toml for configured clusters and spread experiments evenly across them. Do not submit all jobs to a single cluster when multiple are available.
 
+**IMPORTANT: You MUST use the xgenius journal for EVERY hypothesis and experiment.** Before submitting any experiments:
+1. `xgenius journal add-hypothesis "..." --motivation "..." --expected "..."` — record what you're testing and why
+2. Submit jobs with `--hypothesis-id` so they're linked in the journal
+3. After results come in, `xgenius journal add-result` and `xgenius journal update-hypothesis`
+The journal is how the watcher provides you context when it wakes you up. Without it, you lose track of your research.
+
 ## Project State Directory
 
 The `.xgenius/` directory contains all xgenius runtime state:
