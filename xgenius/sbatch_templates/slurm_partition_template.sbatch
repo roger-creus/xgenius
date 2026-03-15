@@ -2,7 +2,7 @@
 #SBATCH --partition={{PARTITION}}
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task={{NUM_CPUS}}
-#SBATCH --gres=gpu:{{NUM_GPUS}}
+#SBATCH --gres=gpu:{{GPU_TYPE}}{{NUM_GPUS}}
 #SBATCH --time={{TIME}}
 #SBATCH --mem={{MEM}}
 #SBATCH --output={{OUTPUT_FILE}}

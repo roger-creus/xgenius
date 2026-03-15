@@ -14,6 +14,7 @@ class SlurmConfig:
     account: str = ""
     partition: str = ""
     num_gpus: int = 1
+    gpu_type: str = ""  # e.g., "h100", "a100", "v100" — empty means any GPU
     num_cpus: int = 8
     memory: str = "32G"
     walltime: str = "12:00:00"
@@ -86,6 +87,7 @@ def _parse_slurm(data: dict) -> SlurmConfig:
         account=str(data.get("account", "")),
         partition=str(data.get("partition", "")),
         num_gpus=int(data.get("num_gpus", 1)),
+        gpu_type=str(data.get("gpu_type", "")),
         num_cpus=int(data.get("num_cpus", 8)),
         memory=str(data.get("memory", "32G")),
         walltime=str(data.get("walltime", "12:00:00")),

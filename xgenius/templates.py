@@ -123,14 +123,25 @@ def render_template(
     return rendered
 
 
-def build_params_from_cluster(cluster: ClusterConfig) -> dict[str, str]:
+def build_params_from_cluster(cluster: ClusterConfig, container_image: str = "") -> dict[str, str]:
     """Build template parameters dict from cluster SLURM config.
 
     Maps ClusterConfig.slurm fields to the {{PLACEHOLDER}} names used in templates.
     """
     slurm = cluster.slurm
+
+    # Resolve full image path: if image_path is a directory, join with container_image basename
+    image_path = cluster.image_path
+    if container_image and not image_path.endswith(".sif"):
+        image_path = os.path.join(image_path, os.path.basename(container_image))
+    image_name = os.path.basename(image_path)
+
+    # GPU_TYPE: "h100:" when set, "" when empty — so gres becomes gpu:h100:1 or gpu:1
+    gpu_type_prefix = f"{slurm.gpu_type}:" if slurm.gpu_type else ""
+
     params = {
         "NUM_GPUS": str(slurm.num_gpus),
+        "GPU_TYPE": gpu_type_prefix,
         "NUM_CPUS": str(slurm.num_cpus),
         "MEM": slurm.memory,
         "TIME": slurm.walltime,
@@ -139,10 +150,8 @@ def build_params_from_cluster(cluster: ClusterConfig) -> dict[str, str]:
         "CODE_DIR_IN_CLUSTER": cluster.project_path,
         "OUTPUT_DIR_IN_CLUSTER": slurm.output_dir_cluster,
         "OUTPUT_DIR_IN_CONTAINER": slurm.output_dir_container,
-        "IMAGE_NAME": os.path.basename(
-            os.path.join(cluster.image_path, "")  # Get just the image filename
-        ),
-        "IMAGE_PATH": cluster.image_path,
+        "IMAGE_NAME": image_name,
+        "IMAGE_PATH": image_path,
     }
 
     # Add account or partition depending on template type
