@@ -198,7 +198,21 @@ Optionally list initial ideas for the agent to consider.
 # xgenius — transient state (don't commit)
 .xgenius/markers/
 .xgenius/watcher.log
+.xgenius/watcher.lock
+
+# Singularity/Apptainer containers (too large for git)
 *.sif
+
+# Experiment outputs (pulled to results/ locally, stored on cluster)
+results/
+
+# Common large/transient files
+wandb/
+runs/
+*.tfevents.*
+*.pt
+*.pth
+*.ckpt
 """
     if os.path.exists(gitignore_path):
         with open(gitignore_path) as f:
