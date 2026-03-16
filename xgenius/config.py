@@ -213,12 +213,36 @@ def get_xgenius_dir(config: XGeniusConfig) -> str:
     return os.path.join(get_project_dir(config), ".xgenius")
 
 
+def get_run_id(config: XGeniusConfig) -> str:
+    """Get the current run ID. Stored in .xgenius/run_id."""
+    xgenius_dir = get_xgenius_dir(config)
+    run_id_path = os.path.join(xgenius_dir, "run_id")
+    if os.path.exists(run_id_path):
+        with open(run_id_path) as f:
+            return f.read().strip()
+    return ""
+
+
+def create_run_id() -> str:
+    """Generate a new short run ID like 'xg-a3f9'."""
+    import hashlib
+    import time as _time
+    raw = f"{_time.time()}-{os.getpid()}"
+    return "xg-" + hashlib.sha256(raw.encode()).hexdigest()[:6]
+
+
 def ensure_xgenius_dir(config: XGeniusConfig) -> str:
     """Create .xgenius directory and all standard files. Returns the path."""
     xgenius_dir = get_xgenius_dir(config)
     os.makedirs(xgenius_dir, exist_ok=True)
     os.makedirs(os.path.join(xgenius_dir, "markers"), exist_ok=True)
     os.makedirs(os.path.join(xgenius_dir, "batches"), exist_ok=True)
+
+    # Create run ID if missing
+    run_id_path = os.path.join(xgenius_dir, "run_id")
+    if not os.path.exists(run_id_path):
+        with open(run_id_path, "w") as f:
+            f.write(create_run_id())
 
     # Create standard files if missing
     for fname in ["journal.md"]:

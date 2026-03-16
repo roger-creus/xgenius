@@ -6,7 +6,7 @@
 #SBATCH --mem={{MEM}}
 #SBATCH --time={{TIME}}
 #SBATCH --output={{LOG_FILE}}
-#SBATCH --job-name=xg-{{EXPERIMENT_ID}}
+#SBATCH --job-name={{RUN_ID}}-{{EXPERIMENT_ID}}
 
 mkdir -p {{OUTPUT_DIR_IN_CLUSTER}}
 mkdir -p {{LOG_DIR}}

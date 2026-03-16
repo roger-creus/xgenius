@@ -938,7 +938,7 @@ def cmd_audit(args):
 def cmd_reset(args):
     """Reset xgenius state for a fresh research run."""
     config = _load_config(args)
-    from xgenius.config import get_xgenius_dir
+    from xgenius.config import get_xgenius_dir, create_run_id
 
     xgenius_dir = get_xgenius_dir(config)
 
@@ -954,7 +954,13 @@ def cmd_reset(args):
     except Exception:
         pass
 
-    files_to_clear = ["journal.md", "watcher.log"]
+    # Generate new run ID
+    new_run_id = create_run_id()
+    with open(os.path.join(xgenius_dir, "run_id"), "w") as f:
+        f.write(new_run_id)
+    console.print(f"[green]New run ID: {new_run_id}[/green]")
+
+    files_to_clear = ["journal.md", "watcher.log", "DEBUG.md"]
     cleared = []
     for fname in files_to_clear:
         fpath = os.path.join(xgenius_dir, fname)

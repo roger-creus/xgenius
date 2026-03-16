@@ -227,7 +227,10 @@ class JobManager:
             return SubmitResult(success=False, cluster=cluster_name, error=str(e))
 
         # Build params with overrides applied
+        from xgenius.config import get_run_id
+        run_id = get_run_id(self.config)
         params = build_params_from_cluster(cluster, container_image=self.config.project.container_image)
+        params["RUN_ID"] = run_id
         params["NUM_GPUS"] = str(effective_gpus)
         params["GPU_TYPE"] = f"{effective_gpu_type}:" if effective_gpu_type else ""
         params["NUM_CPUS"] = str(effective_cpus)
@@ -569,6 +572,11 @@ class JobManager:
                         output_dir=str(data.get("output_dir", "")),
                         walltime_seconds=int(data.get("walltime_seconds", 0)),
                     )
+                    # Only process if this job belongs to current run (exists in DB)
+                    if not self.db.get_job(completion.job_id):
+                        ssh.run(f"rm -f {marker_path}")
+                        continue
+
                     completions.append(completion)
 
                     # Remove the marker file after reading
