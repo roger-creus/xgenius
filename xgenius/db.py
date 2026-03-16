@@ -486,13 +486,14 @@ class XGeniusDB:
 
         # What to do
         parts.append("## Your tasks (in order):")
-        parts.append("1. Read CLAUDE.md for full tool documentation and conventions")
-        parts.append("2. Read research_goal.md for the research objective")
-        parts.append("3. Check results bank: `cat results/experiments.csv` and `cat results/hypotheses.csv`")
-        parts.append("4. For READY FOR ANALYSIS hypotheses: pull results (`xgenius pull --cluster NAME`), parse the CSVs from `results/CLUSTER/`, update the results bank, update hypothesis status")
-        parts.append("5. For WAITING hypotheses: do NOT conclude — wait for all experiments to finish")
-        parts.append("6. If all hypotheses are analyzed: formulate new hypotheses and submit new experiments")
-        parts.append("7. Commit and push all changes before exiting")
-        parts.append("8. Exit when done — the watcher will trigger you again when more jobs complete")
+        parts.append("1. Read CLAUDE.md for tools and conventions")
+        parts.append("2. Read your research journal: `xgenius journal read` (your memory from previous sessions)")
+        parts.append("3. Read research_goal.md for the objective")
+        parts.append("4. Check DB: `xgenius job-history --json` for all job states")
+        parts.append("5. Check results bank: `cat results/experiments.csv` and `cat results/hypotheses.csv`")
+        parts.append("6. For completed experiments: pull results, parse CSVs, update results bank")
+        parts.append("7. Analyze and decide: continue waiting, or formulate new hypotheses")
+        parts.append("8. Write a journal entry summarizing what you did: `xgenius journal write \"...\"`")
+        parts.append("9. Commit and push all changes before exiting")
 
         return "\n".join(parts)

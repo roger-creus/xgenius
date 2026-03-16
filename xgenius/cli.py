@@ -280,11 +280,8 @@ docs: <description>            — Documentation updates
 ### Available Commands
 
 **Research Loop:**
-- `xgenius journal context` — Full research context: goal, hypotheses, experiments, results, what to try next
-- `xgenius journal summary` — Concise progress summary
-- `xgenius journal add-hypothesis "text" --motivation "why" --expected "outcome"` — Record a hypothesis
-- `xgenius journal add-result --experiment-id ID --metrics '{"key": value}' --analysis "text"` — Record results
-- `xgenius journal update-hypothesis --id ID --status confirmed|rejected|partially_confirmed --conclusion "text"`
+- `xgenius journal read` — Read the full research journal (your persistent memory across sessions)
+- `xgenius journal write "entry text"` — Append a timestamped entry to the journal
 
 **Job Management:**
 - `xgenius submit --cluster NAME --command "python script.py --args" [--experiment-id ID] [--hypothesis-id ID] [--gpus N] [--cpus N] [--memory "16G"] [--walltime "04:00:00"]` — Submit a job
@@ -409,9 +406,30 @@ The xgenius.toml [safety] section defines MAXIMUM resource limits. You can reque
 Use `xgenius job-history --json` to see how long past jobs took, then adjust walltime accordingly.
 Use `xgenius status --json` to see pending/running jobs with their elapsed time, submit time, and pending reason.
 
+### Two State Systems — DB + Journal
+
+**SQLite DB** (`.xgenius/xgenius.db`) — AUTOMATED operational state. Updated by the watcher every cycle.
+- Job statuses (submitted/pending/running/completed/failed/etc.)
+- Walltimes, exit codes, timestamps, results_pulled flag
+- Query with: `xgenius job-history --json`, `xgenius status --json`
+
+**Research Journal** (`.xgenius/journal.md`) — YOUR persistent research memory. Written by you.
+- What hypotheses were tried and why
+- Key findings, insights, and conclusions
+- Ideas for future investigation
+- Decisions and rationale
+- Read with: `xgenius journal read`
+- Write with: `xgenius journal write "your entry here"`
+
+**Every session, you MUST:**
+1. Read the journal (`xgenius journal read`) to recall what previous sessions did
+2. Check the DB (`xgenius job-history --json`) for current job states
+3. Before exiting, write a journal entry summarizing what you did and what to do next
+
 ### Research Workflow
-1. Run `xgenius journal context` to understand current state
-2. Formulate a hypothesis and record it
+1. Read `xgenius journal read` for research memory from previous sessions
+2. Check `xgenius job-history --json` for DB state (all job statuses, walltimes, etc.)
+3. Formulate a hypothesis and record it
 3. Modify code to test the hypothesis
 4. Run `xgenius sync` to push code to cluster
 5. Run `xgenius submit` to start experiments
@@ -422,10 +440,8 @@ Use `xgenius status --json` to see pending/running jobs with their elapsed time,
 
 The `.xgenius/` directory contains all xgenius runtime state:
 - `.xgenius/templates/` — SBATCH job script templates (you can edit these to customize job behavior)
-- `.xgenius/journal.jsonl` — research journal (hypotheses, experiments, results)
-- `.xgenius/journal_summary.md` — auto-generated research summary
-- `.xgenius/jobs.jsonl` — job tracker (job IDs, statuses, log file paths)
-- `.xgenius/audit.jsonl` — audit log of all actions
+- `.xgenius/journal.md` — your persistent research memory (read/write every session)
+- `.xgenius/xgenius.db` — SQLite DB with all job states (automated by watcher)
 - `.xgenius/batches/` — archived batch submission files (auto-saved on every batch-submit)
 - `.xgenius/watcher.log` — watcher daemon activity log
 
@@ -447,7 +463,7 @@ When you need to build/rebuild the container:
 - All commands are validated against limits in xgenius.toml [safety]
 - Commands must start with allowed prefixes (e.g., "python")
 - Resource requests are checked against max GPU/CPU/memory/walltime
-- All actions are logged to .xgenius/audit.jsonl
+- All job states tracked in .xgenius/xgenius.db (automated)
 """
 
     if os.path.exists(claude_md_path):
@@ -816,32 +832,12 @@ def cmd_journal(args):
 
     journal = ResearchJournal(config)
 
-    if args.journal_command == "context":
-        _output(journal.get_context(), args.json)
-    elif args.journal_command == "summary":
-        _output(journal.get_summary(), args.json)
-    elif args.journal_command == "add-hypothesis":
-        hid = journal.add_hypothesis(
-            text=args.text,
-            motivation=args.motivation or "",
-            expected_outcome=args.expected or "",
-        )
-        _output({"hypothesis_id": hid}, args.json)
-    elif args.journal_command == "add-result":
-        metrics = json.loads(args.metrics)
-        journal.add_result(
-            experiment_id=args.experiment_id,
-            metrics=metrics,
-            analysis=args.analysis or "",
-        )
+    if args.journal_command == "read":
+        content = journal.read()
+        _output(content if content else "Journal is empty.", args.json)
+    elif args.journal_command == "write":
+        journal.write(args.entry)
         _output({"status": "recorded"}, args.json)
-    elif args.journal_command == "update-hypothesis":
-        journal.update_hypothesis(
-            hypothesis_id=args.id,
-            status=args.status,
-            conclusion=args.conclusion or "",
-        )
-        _output({"status": "updated"}, args.json)
     else:
         _output({"error": f"Unknown journal command: {args.journal_command}"}, args.json)
 
@@ -958,7 +954,7 @@ def cmd_reset(args):
     except Exception:
         pass
 
-    files_to_clear = ["jobs.jsonl", "journal.jsonl", "journal_summary.md", "audit.jsonl", "watcher.log"]
+    files_to_clear = ["journal.md", "watcher.log"]
     cleared = []
     for fname in files_to_clear:
         fpath = os.path.join(xgenius_dir, fname)
@@ -1136,26 +1132,13 @@ def main():
     p.set_defaults(func=cmd_verify_image)
 
     # journal (with sub-subcommands)
-    p = subparsers.add_parser("journal", parents=[parent_parser], help="Research journal operations")
+    p = subparsers.add_parser("journal", parents=[parent_parser], help="Research journal — persistent research memory")
     jp = p.add_subparsers(dest="journal_command", required=True)
 
-    jp.add_parser("context", parents=[parent_parser], help="Full research context dump")
-    jp.add_parser("summary", parents=[parent_parser], help="Concise progress summary")
+    jp.add_parser("read", parents=[parent_parser], help="Read the full journal")
 
-    ah = jp.add_parser("add-hypothesis", parents=[parent_parser], help="Record a new hypothesis")
-    ah.add_argument("text", help="Hypothesis text")
-    ah.add_argument("--motivation", default="", help="Why this hypothesis")
-    ah.add_argument("--expected", default="", help="Expected outcome")
-
-    ar = jp.add_parser("add-result", parents=[parent_parser], help="Record experiment results")
-    ar.add_argument("--experiment-id", required=True, help="Experiment ID")
-    ar.add_argument("--metrics", required=True, help="JSON metrics string")
-    ar.add_argument("--analysis", default="", help="Analysis text")
-
-    uh = jp.add_parser("update-hypothesis", parents=[parent_parser], help="Update hypothesis status")
-    uh.add_argument("--id", required=True, help="Hypothesis ID")
-    uh.add_argument("--status", required=True, choices=["proposed", "testing", "confirmed", "rejected", "partially_confirmed"])
-    uh.add_argument("--conclusion", default="", help="Conclusion text")
+    jw = jp.add_parser("write", parents=[parent_parser], help="Append an entry to the journal")
+    jw.add_argument("entry", help="Journal entry text (markdown)")
 
     p.set_defaults(func=cmd_journal)
 
