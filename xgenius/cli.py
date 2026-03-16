@@ -363,9 +363,22 @@ bank.hypotheses.upsert({"hypothesis_id": "h001", "status": "closed", "comment": 
 bank.summary()
 ```
 
+**CRITICAL — Experiment CSV output convention:**
+Every training script MUST save a CSV results file during/after execution. The file MUST:
+- Be saved to the output directory (bound via Singularity `--bind` to the cluster output path)
+- Follow this naming: `{hypothesis_id}__{experiment_id}.csv` (double underscore separator)
+- Contain at minimum: the target metric(s) of interest as specified in research_goal.md
+- Be parseable by you when you wake up — include column headers
+
+Example: a job submitted as `--hypothesis-id h003 --experiment-id pqn_spectral_qbert_s1` should produce:
+`/output_dir/h003__pqn_spectral_qbert_s1.csv`
+
+If a training script does NOT save a CSV with this convention, you MUST add it before submitting experiments.
+The watcher pulls these raw CSVs to `results/CLUSTER/` when jobs complete. You then parse them and append to the results bank.
+
 **Your responsibilities:**
-1. Ensure every training script logs the target metric of interest (specified in research_goal.md) — implement CSV logging if missing
-2. After pulling results, parse outputs and append rows to `results/experiments.csv`
+1. Ensure every training script saves a `{hypothesis_id}__{experiment_id}.csv` with the target metric — implement this if missing
+2. When woken up, parse pulled CSVs from `results/CLUSTER/` and append rows to `results/experiments.csv`
 3. Update `results/hypotheses.csv` with status and notes as hypotheses evolve
 4. Build project-specific analysis tools to compare algorithms and track progress — commit these
 5. Commit both CSVs to git after every update
