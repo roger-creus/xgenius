@@ -739,7 +739,8 @@ class JobManager:
         for cluster_name in pending_by_cluster:
             try:
                 statuses = self.status(cluster_name=cluster_name)
-                active_ids.update(s.job_id for s in statuses)
+                # Ignore COMPLETING (CG) jobs — they're done, markers should handle them
+                active_ids.update(s.job_id for s in statuses if s.state not in ("COMPLETING", "COMPLETI"))
             except Exception:
                 # If we can't reach the cluster, don't mark jobs as cancelled
                 active_ids.update(pending_by_cluster[cluster_name])
