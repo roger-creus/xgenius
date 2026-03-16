@@ -159,19 +159,16 @@ Claude will:
 
 ### 5. Start the autonomous research loop
 
-Use two terminals (tmux recommended):
+Run in a single terminal (tmux recommended):
 
 ```bash
-# Terminal 1: kick off the agent (non-interactive, fully autonomous)
 cd auto-myproject
-claude -p "Start the autonomous research loop. Read CLAUDE.md and research_goal.md and begin." --dangerously-skip-permissions
-
-# Terminal 2: start the watcher daemon
-cd auto-myproject
-xgenius watch
+claude -p "Start the autonomous research loop. Read CLAUDE.md and research_goal.md and begin." --dangerously-skip-permissions && xgenius watch
 ```
 
-The agent runs non-interactively (`-p` mode), does its work (reads goal, submits experiments), and exits. The watcher daemon polls clusters for completed jobs and triggers a **fresh** `claude -p "..."` session with full status context when results are ready. Each wake-up is a clean session — no stale context accumulation.
+The agent runs first (`claude -p`), does its initial work (reads goal, submits baseline experiments), and exits. Then the watcher daemon starts automatically (`&&`), polls clusters for completed jobs, and triggers a **fresh** `claude -p "..."` session when results are ready. Each wake-up is a clean session — no stale context accumulation.
+
+**Important:** The watcher MUST start after the initial agent exits. The `&&` ensures this. Do NOT run them in parallel — it causes duplicate Claude sessions.
 
 **Safety:** The watcher will never trigger Claude if another Claude process is already running in the project directory. Completions are accumulated and delivered in the next cycle.
 
