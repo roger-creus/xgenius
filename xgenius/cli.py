@@ -336,7 +336,16 @@ When a job fails:
 4. Log files are stored at `{scratch}/.xgenius/logs/{experiment_id}_{job_id}.out` on the cluster
 
 ### Results Bank
-ALL experiments MUST log metrics to CSV files in the output directory. After pulling results with `xgenius pull`, consolidate into `results/all_results.csv` — a single file with every experiment ever run. Commit this file to git as the persistent results bank. Every training script must save at minimum: experiment_id, env_id, seed, algorithm, final_mean_return, final_std_return, total_timesteps, walltime_seconds. If a script doesn't save CSV results, add it before submitting experiments.
+ALL experiments MUST log metrics to a CSV results bank at `results/all_results.csv`. This is your persistent record of every experiment ever run, committed to git.
+
+**Required columns:** `experiment_id`, `hypothesis_id`, `command` — these are always present for traceability.
+**Metric columns:** Project-dependent — you decide what metrics matter and add them as columns. The first time you set up the results bank, examine what metrics the training scripts produce and design the CSV schema accordingly.
+
+**Your responsibilities:**
+1. Ensure every training script saves its metrics (implement CSV logging if missing)
+2. After pulling results from clusters, parse experiment outputs and append rows to `results/all_results.csv`
+3. Build analysis tools (scripts/notebooks) to query the results bank, compare algorithms, track progress, and identify where to focus next
+4. Commit `results/all_results.csv` to git after every update
 
 ### Resource Management
 The xgenius.toml [safety] section defines MAXIMUM resource limits. You can request LESS:
