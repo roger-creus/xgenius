@@ -203,9 +203,6 @@ Optionally list initial ideas for the agent to consider.
 # Singularity/Apptainer containers (too large for git)
 *.sif
 
-# Experiment outputs (pulled to results/ locally, stored on cluster)
-results/
-
 # Common large/transient files
 wandb/
 runs/
@@ -337,6 +334,9 @@ When a job fails:
 2. Run `xgenius logs --experiment-id EXPERIMENT_ID --json` to see full stdout
 3. Run `xgenius job-history --json` to see all jobs with their log file paths, statuses, and walltimes
 4. Log files are stored at `{scratch}/.xgenius/logs/{experiment_id}_{job_id}.out` on the cluster
+
+### Results Bank
+ALL experiments MUST log metrics to CSV files in the output directory. After pulling results with `xgenius pull`, consolidate into `results/all_results.csv` — a single file with every experiment ever run. Commit this file to git as the persistent results bank. Every training script must save at minimum: experiment_id, env_id, seed, algorithm, final_mean_return, final_std_return, total_timesteps, walltime_seconds. If a script doesn't save CSV results, add it before submitting experiments.
 
 ### Resource Management
 The xgenius.toml [safety] section defines MAXIMUM resource limits. You can request LESS:
