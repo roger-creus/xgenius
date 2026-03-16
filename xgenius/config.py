@@ -214,10 +214,26 @@ def get_xgenius_dir(config: XGeniusConfig) -> str:
 
 
 def ensure_xgenius_dir(config: XGeniusConfig) -> str:
-    """Create .xgenius directory if it doesn't exist. Returns the path."""
+    """Create .xgenius directory and all standard files. Returns the path."""
     xgenius_dir = get_xgenius_dir(config)
     os.makedirs(xgenius_dir, exist_ok=True)
     os.makedirs(os.path.join(xgenius_dir, "markers"), exist_ok=True)
+    os.makedirs(os.path.join(xgenius_dir, "batches"), exist_ok=True)
+
+    # Create standard files if missing
+    for fname in ["journal.md"]:
+        fpath = os.path.join(xgenius_dir, fname)
+        if not os.path.exists(fpath):
+            with open(fpath, "w") as f:
+                pass
+
+    # Create DEBUG.md in project root if missing
+    project_dir = get_project_dir(config)
+    debug_path = os.path.join(project_dir, "DEBUG.md")
+    if not os.path.exists(debug_path):
+        with open(debug_path, "w") as f:
+            f.write("# Debug Log\n\nErrors and issues encountered during autonomous research.\n")
+
     return xgenius_dir
 
 
