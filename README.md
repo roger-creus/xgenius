@@ -175,6 +175,8 @@ The agent runs non-interactively (`-p` mode), does its work (reads goal, submits
 
 **Safety:** The watcher will never trigger Claude if another Claude process is already running in the project directory. Completions are accumulated and delivered in the next cycle.
 
+**Warning:** Do not start other Claude Code sessions in the same project directory while the research loop is running — the watcher detects Claude processes by directory and will skip polling cycles until they exit.
+
 **Monitor progress:**
 ```bash
 tail -f .xgenius/watcher.log           # watcher activity
