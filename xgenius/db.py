@@ -98,6 +98,11 @@ class XGeniusDB:
                     updated_at TEXT NOT NULL
                 )
             """)
+            # Migrate: add columns that might be missing from older DBs
+            existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+            if "last_checked_at" not in existing_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN last_checked_at TEXT DEFAULT NULL")
+
             # Index for common queries
             conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_hypothesis ON jobs(hypothesis_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
@@ -423,10 +428,10 @@ class XGeniusDB:
             return {r["job_id"] for r in rows}
 
     def reset(self) -> None:
-        """Clear all data (called by xgenius reset)."""
-        with _connect(self.db_path) as conn:
-            conn.execute("DELETE FROM jobs")
-            conn.execute("DELETE FROM hypotheses")
+        """Delete and recreate the DB (called by xgenius reset)."""
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+        self._init_db()
 
     def build_wakeup_prompt(self, completions: list = None, reconciled_ids: list = None) -> str:
         """Build the prompt sent to Claude when the watcher triggers it.
