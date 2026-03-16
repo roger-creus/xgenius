@@ -341,49 +341,42 @@ When a job fails:
 4. Log files are stored at `{scratch}/.xgenius/logs/{experiment_id}_{job_id}.out` on the cluster
 
 ### Results Bank
-ALL experiments MUST log metrics to a CSV results bank at `results/all_results.csv`. This is your persistent record of every experiment ever run, committed to git.
+Two CSV tables in `results/`, both committed to git:
 
-**Required columns:** `experiment_id`, `hypothesis_id`, `command`, `comment` (your notes — observations, surprises, failure analysis, ideas), `status` (open/closed/promising).
-- `open` = worth revisiting later when more context is available
-- `closed` = dead end, not worth pursuing further
-- `promising` = actively being developed or strong results
+**`results/experiments.csv`** — one row per experiment
+- Required: `experiment_id`, `hypothesis_id`, `command`, `comment` (per-experiment notes)
+- Metric columns: project-dependent — you define what to track (the target metric from research_goal.md MUST be included)
 
-**Metric columns:** Project-dependent — you decide what metrics matter and add them.
+**`results/hypotheses.csv`** — one row per hypothesis (upserted as status changes)
+- Required: `hypothesis_id`, `description`, `motivation`, `status`, `comment` (high-level notes)
+- Status: `proposed`, `open` (revisit later), `promising` (active), `closed` (dead end)
 
-**CLI queries:**
-- `xgenius results summary` — overview of the results bank
-- `xgenius results all --json` — all results
-- `xgenius results hypothesis --id h001 --json` — results for a hypothesis
-- `xgenius results experiment --id exp_name --json` — results for an experiment
-- `xgenius results open --json` — all open (revisitable) hypotheses
-- `xgenius results promising --json` — all actively promising hypotheses
-- `xgenius results comments --hypothesis-id h001 --json` — notes for a hypothesis
+**CLI:** `xgenius results summary|experiments|hypotheses|hypothesis --id X|experiment --id X|open|promising|closed`
 
-**Python API** (for building analysis tools):
+**Python API:**
 ```python
 from xgenius.results import ResultsBank
-bank = ResultsBank("results/all_results.csv")
-bank.get_all()
-bank.get_by_hypothesis("h001")
-bank.get_open()
-bank.append({"experiment_id": "...", "hypothesis_id": "...", ...})
+bank = ResultsBank("results/")
+bank.experiments.get_by_hypothesis("h001")
+bank.experiments.append({...})
+bank.hypotheses.upsert({"hypothesis_id": "h001", "status": "closed", "comment": "..."})
 bank.summary()
 ```
 
 **Your responsibilities:**
-1. Ensure every training script saves its metrics (implement CSV logging if missing)
-2. After pulling results, parse outputs and append rows to the results bank
-3. Build project-specific analysis tools (scripts) to compare algorithms and track progress — commit these
-4. Commit `results/all_results.csv` to git after every update
-5. Do NOT conclude on a hypothesis until ALL its experiments have completed — pilot experiments verify correctness, NOT hypothesis validity
-6. Leave detailed comments on every result — what worked, what didn't, why, ideas for follow-up
-7. Mark hypotheses as open/closed/promising based on full (not partial) evidence
+1. Ensure every training script logs the target metric of interest (specified in research_goal.md) — implement CSV logging if missing
+2. After pulling results, parse outputs and append rows to `results/experiments.csv`
+3. Update `results/hypotheses.csv` with status and notes as hypotheses evolve
+4. Build project-specific analysis tools to compare algorithms and track progress — commit these
+5. Commit both CSVs to git after every update
+6. Do NOT conclude on a hypothesis until ALL its experiments have completed — pilots verify correctness, NOT hypothesis validity
+7. Leave detailed notes on BOTH tables: per-experiment observations + per-hypothesis conclusions
 
 ### Research and Knowledge
-- **Search the web** for related work, recent papers, implementation tricks, and state-of-the-art methods before and during research
-- **Install new dependencies** freely — if you need a new library, add it to the Dockerfile, rebuild the container (`xgenius build`), and push it (`xgenius push-image`)
-- **Read existing code** in the repository for inspiration — many algorithms are already implemented
-- Stay up to date with the latest research — use web search to find papers, blog posts, and code repositories
+- **Search the web constantly** for related work, recent papers, implementation tricks, and state-of-the-art methods — not just at the start, but throughout the research
+- **Install new dependencies** freely — add to Dockerfile, rebuild (`xgenius build`), push (`xgenius push-image`)
+- **Read existing code** in the repository for inspiration
+- Stay up to date — use web search to find papers, blog posts, and code repositories
 
 ### Resource Management
 The xgenius.toml [safety] section defines MAXIMUM resource limits. You can request LESS:
@@ -853,24 +846,26 @@ def cmd_results(args):
 
     config = _load_config(args)
     project_dir = get_project_dir(config)
-    bank = ResultsBank(os.path.join(project_dir, "results", "all_results.csv"))
+    bank = ResultsBank(os.path.join(project_dir, "results"))
 
     if args.results_command == "summary":
         _output(bank.summary(), args.json)
-    elif args.results_command == "all":
-        _output(bank.get_all(), args.json)
+    elif args.results_command == "experiments":
+        _output(bank.experiments.get_all(), args.json)
+    elif args.results_command == "hypotheses":
+        _output(bank.hypotheses.get_all(), args.json)
     elif args.results_command == "hypothesis":
-        _output(bank.get_by_hypothesis(args.id), args.json)
+        hyp = bank.hypotheses.get_by_id(args.id)
+        exps = bank.experiments.get_by_hypothesis(args.id)
+        _output({"hypothesis": hyp, "experiments": exps}, args.json)
     elif args.results_command == "experiment":
-        _output(bank.get_by_experiment(args.id), args.json)
+        _output(bank.experiments.get_by_experiment(args.id), args.json)
     elif args.results_command == "open":
-        _output(bank.get_open(), args.json)
+        _output(bank.hypotheses.get_open(), args.json)
     elif args.results_command == "promising":
-        _output(bank.get_promising(), args.json)
+        _output(bank.hypotheses.get_promising(), args.json)
     elif args.results_command == "closed":
-        _output(bank.get_closed(), args.json)
-    elif args.results_command == "comments":
-        _output(bank.get_comments(hypothesis_id=args.hypothesis_id or "", experiment_id=args.experiment_id or ""), args.json)
+        _output(bank.hypotheses.get_closed(), args.json)
 
 
 # --- Report ---
@@ -1160,17 +1155,15 @@ def main():
     p = subparsers.add_parser("results", parents=[parent_parser], help="Query the results bank")
     rp = p.add_subparsers(dest="results_command", required=True)
     rp.add_parser("summary", parents=[parent_parser], help="Results bank summary")
-    rp.add_parser("all", parents=[parent_parser], help="All results")
+    rp.add_parser("experiments", parents=[parent_parser], help="All experiment results")
+    rp.add_parser("hypotheses", parents=[parent_parser], help="All hypotheses with status/notes")
     rp.add_parser("open", parents=[parent_parser], help="Open hypotheses (worth revisiting)")
     rp.add_parser("promising", parents=[parent_parser], help="Promising hypotheses (active)")
     rp.add_parser("closed", parents=[parent_parser], help="Closed hypotheses (dead ends)")
-    rh = rp.add_parser("hypothesis", parents=[parent_parser], help="Results for a hypothesis")
+    rh = rp.add_parser("hypothesis", parents=[parent_parser], help="A hypothesis + its experiments")
     rh.add_argument("--id", required=True, help="Hypothesis ID")
     re = rp.add_parser("experiment", parents=[parent_parser], help="Results for an experiment")
     re.add_argument("--id", required=True, help="Experiment ID")
-    rc = rp.add_parser("comments", parents=[parent_parser], help="Comments/notes")
-    rc.add_argument("--hypothesis-id", default=None, help="Filter by hypothesis")
-    rc.add_argument("--experiment-id", default=None, help="Filter by experiment")
     p.set_defaults(func=cmd_results)
 
     # validate
