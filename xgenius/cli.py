@@ -186,6 +186,11 @@ Optionally list initial ideas for the agent to consider.
     ensure_xgenius_dir(cfg)
     console.print("[green]Created .xgenius/ directory[/green]")
 
+    # Create results directory
+    results_dir = os.path.join(project_dir, "results")
+    os.makedirs(results_dir, exist_ok=True)
+    console.print("[green]Created results/ directory[/green] — results bank lives here.")
+
     # Copy SBATCH templates to project so Claude can customize them
     from xgenius.templates import copy_templates_to_project
     templates_dir = copy_templates_to_project(project_dir)
@@ -338,15 +343,47 @@ When a job fails:
 ### Results Bank
 ALL experiments MUST log metrics to a CSV results bank at `results/all_results.csv`. This is your persistent record of every experiment ever run, committed to git.
 
-**Required columns:** `experiment_id`, `hypothesis_id`, `command`, `comment` (your notes on what happened), `status` (open/closed/promising) — always present for traceability.
-**Metric columns:** Project-dependent — you decide what metrics matter and add them as columns.
+**Required columns:** `experiment_id`, `hypothesis_id`, `command`, `comment` (your notes — observations, surprises, failure analysis, ideas), `status` (open/closed/promising).
+- `open` = worth revisiting later when more context is available
+- `closed` = dead end, not worth pursuing further
+- `promising` = actively being developed or strong results
+
+**Metric columns:** Project-dependent — you decide what metrics matter and add them.
+
+**CLI queries:**
+- `xgenius results summary` — overview of the results bank
+- `xgenius results all --json` — all results
+- `xgenius results hypothesis --id h001 --json` — results for a hypothesis
+- `xgenius results experiment --id exp_name --json` — results for an experiment
+- `xgenius results open --json` — all open (revisitable) hypotheses
+- `xgenius results promising --json` — all actively promising hypotheses
+- `xgenius results comments --hypothesis-id h001 --json` — notes for a hypothesis
+
+**Python API** (for building analysis tools):
+```python
+from xgenius.results import ResultsBank
+bank = ResultsBank("results/all_results.csv")
+bank.get_all()
+bank.get_by_hypothesis("h001")
+bank.get_open()
+bank.append({"experiment_id": "...", "hypothesis_id": "...", ...})
+bank.summary()
+```
 
 **Your responsibilities:**
 1. Ensure every training script saves its metrics (implement CSV logging if missing)
-2. After pulling results from clusters, parse experiment outputs and append rows to `results/all_results.csv`
-3. Build analysis tools (scripts) to query the results bank, compare algorithms, track progress — commit these tools to the repo
+2. After pulling results, parse outputs and append rows to the results bank
+3. Build project-specific analysis tools (scripts) to compare algorithms and track progress — commit these
 4. Commit `results/all_results.csv` to git after every update
-5. Do NOT conclude on a hypothesis until ALL its experiments have completed — partial results can be misleading
+5. Do NOT conclude on a hypothesis until ALL its experiments have completed — pilot experiments verify correctness, NOT hypothesis validity
+6. Leave detailed comments on every result — what worked, what didn't, why, ideas for follow-up
+7. Mark hypotheses as open/closed/promising based on full (not partial) evidence
+
+### Research and Knowledge
+- **Search the web** for related work, recent papers, implementation tricks, and state-of-the-art methods before and during research
+- **Install new dependencies** freely — if you need a new library, add it to the Dockerfile, rebuild the container (`xgenius build`), and push it (`xgenius push-image`)
+- **Read existing code** in the repository for inspiration — many algorithms are already implemented
+- Stay up to date with the latest research — use web search to find papers, blog posts, and code repositories
 
 ### Resource Management
 The xgenius.toml [safety] section defines MAXIMUM resource limits. You can request LESS:
@@ -807,6 +844,35 @@ def cmd_journal(args):
         _output({"error": f"Unknown journal command: {args.journal_command}"}, args.json)
 
 
+# --- Results Bank ---
+
+def cmd_results(args):
+    """Query the results bank."""
+    from xgenius.results import ResultsBank
+    from xgenius.config import get_project_dir
+
+    config = _load_config(args)
+    project_dir = get_project_dir(config)
+    bank = ResultsBank(os.path.join(project_dir, "results", "all_results.csv"))
+
+    if args.results_command == "summary":
+        _output(bank.summary(), args.json)
+    elif args.results_command == "all":
+        _output(bank.get_all(), args.json)
+    elif args.results_command == "hypothesis":
+        _output(bank.get_by_hypothesis(args.id), args.json)
+    elif args.results_command == "experiment":
+        _output(bank.get_by_experiment(args.id), args.json)
+    elif args.results_command == "open":
+        _output(bank.get_open(), args.json)
+    elif args.results_command == "promising":
+        _output(bank.get_promising(), args.json)
+    elif args.results_command == "closed":
+        _output(bank.get_closed(), args.json)
+    elif args.results_command == "comments":
+        _output(bank.get_comments(hypothesis_id=args.hypothesis_id or "", experiment_id=args.experiment_id or ""), args.json)
+
+
 # --- Report ---
 
 def cmd_report(args):
@@ -1089,6 +1155,23 @@ def main():
     p = subparsers.add_parser("report", parents=[parent_parser], help="Generate full research report from journal history")
     p.add_argument("--output", default=None, help="Output file path (default: research_report.md)")
     p.set_defaults(func=cmd_report)
+
+    # results (with sub-subcommands)
+    p = subparsers.add_parser("results", parents=[parent_parser], help="Query the results bank")
+    rp = p.add_subparsers(dest="results_command", required=True)
+    rp.add_parser("summary", parents=[parent_parser], help="Results bank summary")
+    rp.add_parser("all", parents=[parent_parser], help="All results")
+    rp.add_parser("open", parents=[parent_parser], help="Open hypotheses (worth revisiting)")
+    rp.add_parser("promising", parents=[parent_parser], help="Promising hypotheses (active)")
+    rp.add_parser("closed", parents=[parent_parser], help="Closed hypotheses (dead ends)")
+    rh = rp.add_parser("hypothesis", parents=[parent_parser], help="Results for a hypothesis")
+    rh.add_argument("--id", required=True, help="Hypothesis ID")
+    re = rp.add_parser("experiment", parents=[parent_parser], help="Results for an experiment")
+    re.add_argument("--id", required=True, help="Experiment ID")
+    rc = rp.add_parser("comments", parents=[parent_parser], help="Comments/notes")
+    rc.add_argument("--hypothesis-id", default=None, help="Filter by hypothesis")
+    rc.add_argument("--experiment-id", default=None, help="Filter by experiment")
+    p.set_defaults(func=cmd_results)
 
     # validate
     p = subparsers.add_parser("validate", parents=[parent_parser], help="Validate command against safety rules")
