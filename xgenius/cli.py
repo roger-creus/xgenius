@@ -340,6 +340,14 @@ When a job fails:
 3. Run `xgenius job-history --json` to see all jobs with their log file paths, statuses, and walltimes
 4. Log files are stored at `{scratch}/.xgenius/logs/{experiment_id}_{job_id}.out` on the cluster
 
+### Debug Log
+When you encounter errors (cluster issues, submission failures, crashes, unexpected behavior), append a timestamped entry to `DEBUG.md` in the project root. Format:
+```
+## YYYY-MM-DD HH:MM — Brief title
+Description of what went wrong, what you tried, and the outcome.
+```
+This file is for the HUMAN to review — it helps them see what infrastructure issues you're hitting. Commit it with your other changes.
+
 ### Results Bank
 Two CSV tables in `results/`, both committed to git:
 
