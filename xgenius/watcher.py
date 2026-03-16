@@ -1,47 +1,47 @@
 """Background watcher daemon for xgenius.
 
-Polls clusters for completed jobs and triggers Claude Code to continue
-the autonomous research loop.
+Simple and reliable: poll for .done markers, update DB, pull results, trigger Claude.
+No clever reconciliation, no process detection — just the basics done right.
 """
 
-import json
 import os
 import subprocess
 import sys
 import time
 
-from xgenius.config import load_config, get_xgenius_dir, ensure_xgenius_dir
+from xgenius.config import load_config, get_xgenius_dir, get_project_dir, ensure_xgenius_dir
 from xgenius.jobs import JobManager
-
 
 
 def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> None:
     """Run the background watcher daemon.
 
-    Polls clusters for .done markers. When jobs complete, triggers
-    Claude Code to continue the research loop.
+    Every cycle:
+    1. Update DB from squeue (sync running/pending states)
+    2. Check for .done markers (completions)
+    3. Pull results for completed jobs
+    4. If any new completions → trigger Claude with fresh session
+    5. Sleep and repeat
 
     Args:
         config_path: Path to xgenius.toml.
         verbose: Print status messages.
     """
-    # Ensure ANTHROPIC_API_KEY doesn't interfere with subscription auth.
-    # claude -p uses setup-token / OAuth when no API key is set.
     if "ANTHROPIC_API_KEY" in os.environ:
         del os.environ["ANTHROPIC_API_KEY"]
-        if verbose:
-            print("xgenius watch: Removed ANTHROPIC_API_KEY from environment (using subscription auth)")
 
     config = load_config(config_path)
     xgenius_dir = ensure_xgenius_dir(config)
+    project_dir = get_project_dir(config)
     job_manager = JobManager(config)
+    db = job_manager.db
 
     poll_interval = config.watcher.poll_interval_seconds
     trigger_cmd = config.watcher.trigger_command
     log_path = os.path.join(xgenius_dir, "watcher.log")
+    lock_path = os.path.join(xgenius_dir, "watcher.lock")
 
     def _log(msg: str) -> None:
-        """Write timestamped message to watcher log and optionally to stdout."""
         ts = time.strftime("%Y-%m-%d %H:%M:%S")
         line = f"[{ts}] {msg}"
         with open(log_path, "a") as f:
@@ -49,13 +49,7 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
         if verbose:
             print(f"xgenius watch: {msg}")
 
-    # Lock file to prevent concurrent triggers
-    lock_path = os.path.join(xgenius_dir, "watcher.lock")
-    from xgenius.config import get_project_dir
-    project_dir = get_project_dir(config)
-
-    def _is_trigger_locked() -> bool:
-        """Check if a previous watcher trigger is still running (lock file only)."""
+    def _is_locked() -> bool:
         if not os.path.exists(lock_path):
             return False
         try:
@@ -67,112 +61,69 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
             os.remove(lock_path)
             return False
 
-    def _acquire_lock():
-        with open(lock_path, "w") as f:
-            f.write(str(os.getpid()))
-
-    def _release_lock():
-        if os.path.exists(lock_path):
-            os.remove(lock_path)
-
     _log(f"Started. Polling every {poll_interval}s.")
     _log(f"Trigger command: {trigger_cmd}")
     _log(f"Watching clusters: {list(config.clusters.keys())}")
-    _log(f"Log file: {log_path}")
 
     while True:
         try:
-            # Don't trigger if a previous watcher trigger is still running
-            if _is_trigger_locked():
-                _log("Previous trigger still running. Skipping this cycle.")
+            if _is_locked():
+                _log("Previous trigger still running. Skipping.")
                 time.sleep(poll_interval)
                 continue
 
-            db = job_manager.db
-
-            # Full state sync: update DB from squeue + .done markers
-            recon = job_manager.reconcile()
-            synced = recon.get("synced", 0)
-            disappeared_ids = recon.get("disappeared_ids", [])
-            completed = recon.get("completed", 0)
-
-            if synced > 0:
-                _log(f"Synced {synced} job(s): {completed} completed, {len(disappeared_ids)} disappeared, {recon.get('still_active', 0)} still active")
-
-            # Check how many jobs are still active (from DB)
-            pending = db.get_active_job_ids()
-
-            # If jobs disappeared, trigger Claude to investigate
-            if disappeared_ids:
-                prompt = db.build_wakeup_prompt(reconciled_ids=disappeared_ids)
-                _log(f"Triggering Claude for {len(disappeared_ids)} disappeared job(s)")
-
-                from xgenius.config import get_project_dir
-                project_dir = get_project_dir(config)
-                trigger_parts = trigger_cmd.split()
-                trigger_parts.extend(["-p", prompt])
-                _acquire_lock()
-                try:
-                    subprocess.run(trigger_parts, cwd=project_dir)
-                finally:
-                    _release_lock()
-                _log("Claude finished processing disappeared jobs")
-                continue
-
-            if not pending:
-                _log("No pending jobs. Waiting for new submissions...")
-                time.sleep(poll_interval)
-                continue
-
-            _log(f"{len(pending)} pending job(s). Checking for completions...")
-
-            # Check for completions (.done markers)
-            completions = job_manager.check_completions()
-
-            if completions:
-                for c in completions:
-                    _log(f"Job {c.job_id} ({c.experiment_id}) completed (exit={c.exit_code})")
-
-                # Pull results for ALL completed jobs and mark in DB
-                for c in completions:
+            # Step 1: Update DB from squeue (sync actual states)
+            active_ids = db.get_active_job_ids()
+            if active_ids:
+                for cluster_name in config.clusters:
                     try:
-                        job_manager.pull_results(
-                            cluster_name=c.cluster,
-                            job_id=c.job_id,
-                        )
-                        db.mark_results_pulled(c.job_id)
-                        _log(f"Pulled results for {c.experiment_id}")
+                        statuses = job_manager.status(cluster_name=cluster_name)
+                        for s in statuses:
+                            if s.job_id in active_ids:
+                                db.sync_job_state(s.job_id, s.state)
                     except Exception as e:
-                        _log(f"Failed to pull results for {c.experiment_id}: {e}")
+                        _log(f"Failed to query {cluster_name}: {e}")
 
-                # Also pull results for any previously completed but unpulled jobs
-                unpulled = db.get_completed_not_pulled()
-                for job in unpulled:
-                    if job["job_id"] not in {c.job_id for c in completions}:
-                        try:
-                            job_manager.pull_results(cluster_name=job["cluster"], job_id=job["job_id"])
-                            db.mark_results_pulled(job["job_id"])
-                            _log(f"Pulled missed results for {job['experiment_id']}")
-                        except Exception as e:
-                            _log(f"Failed to pull missed results for {job['experiment_id']}: {e}")
+            # Step 2: Check for .done markers
+            completions = []
+            try:
+                completions = job_manager.check_completions()
+            except Exception as e:
+                _log(f"Failed to check completions: {e}")
 
-                # Build prompt from DB (full status overview) and trigger Claude
+            # Step 3: Pull results for new completions
+            for c in completions:
+                try:
+                    job_manager.pull_results(cluster_name=c.cluster, job_id=c.job_id)
+                    db.mark_results_pulled(c.job_id)
+                    _log(f"Completed: {c.experiment_id} (job {c.job_id}, exit={c.exit_code}) — results pulled")
+                except Exception as e:
+                    _log(f"Completed: {c.experiment_id} (job {c.job_id}, exit={c.exit_code}) — pull failed: {e}")
+
+            # Step 4: If new completions, trigger Claude
+            if completions:
                 prompt = db.build_wakeup_prompt(completions=completions)
-                _log(f"Triggering Claude with {len(completions)} completion(s), {len(db.get_active_job_ids())} remaining")
-
-                from xgenius.config import get_project_dir
-                project_dir = get_project_dir(config)
+                remaining = len(db.get_active_job_ids())
+                _log(f"Triggering Claude: {len(completions)} new completion(s), {remaining} still active")
 
                 trigger_parts = trigger_cmd.split()
                 trigger_parts.extend(["-p", prompt])
 
-                _log("Waiting for Claude to finish processing...")
-                _acquire_lock()
+                with open(lock_path, "w") as f:
+                    f.write(str(os.getpid()))
                 try:
                     subprocess.run(trigger_parts, cwd=project_dir)
                 finally:
-                    _release_lock()
+                    if os.path.exists(lock_path):
+                        os.remove(lock_path)
+
                 _log("Claude finished. Resuming polling.")
+            else:
+                active = len(db.get_active_job_ids())
+                if active > 0:
+                    _log(f"{active} active job(s). No completions yet.")
+                else:
+                    _log("No active jobs. Waiting for new submissions...")
 
             time.sleep(poll_interval)
 
