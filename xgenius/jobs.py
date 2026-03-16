@@ -701,64 +701,91 @@ class JobManager:
         }
 
     def reconcile(self) -> dict:
-        """Reconcile DB with actual SLURM state.
+        """Full state sync between DB and actual SLURM state.
 
-        For every job marked as 'submitted' or 'running' in the DB, check
-        if it still exists in squeue. If not, and no .done marker exists,
-        mark it as 'cancelled'.
+        For every active job in the DB:
+        1. Check squeue for current SLURM state → update DB
+        2. Check for .done markers → update DB with completion data
+        3. Jobs not in squeue AND no marker → mark as 'disappeared'
+
+        This runs every watcher cycle. The DB always reflects ground truth.
 
         Returns:
-            Dict with reconciliation results.
+            Dict with sync results.
         """
-        # Get pending jobs from DB grouped by cluster
-        pending_jobs = self.db.get_pending_jobs()
-        if not pending_jobs:
-            return {"reconciled": 0, "still_active": 0}
+        active_ids = self.db.get_active_job_ids()
+        if not active_ids:
+            return {"synced": 0, "completed": 0, "disappeared": 0, "still_active": 0}
 
-        pending_by_cluster: dict[str, set[str]] = {}
-        for job in pending_jobs:
+        # Group active jobs by cluster
+        active_jobs = self.db.get_pending_jobs()
+        by_cluster: dict[str, dict[str, dict]] = {}
+        for job in active_jobs:
             cluster = job["cluster"]
-            if cluster not in pending_by_cluster:
-                pending_by_cluster[cluster] = set()
-            pending_by_cluster[cluster].add(job["job_id"])
+            if cluster not in by_cluster:
+                by_cluster[cluster] = {}
+            by_cluster[cluster][job["job_id"]] = job
 
-        # Check actual squeue state per cluster
-        active_ids: set[str] = set()
-        for cluster_name in pending_by_cluster:
+        # Step 1: Get actual squeue state per cluster
+        squeue_states: dict[str, str] = {}  # job_id -> SLURM state
+        squeue_reachable: set[str] = set()  # clusters we successfully queried
+
+        for cluster_name in by_cluster:
             try:
                 statuses = self.status(cluster_name=cluster_name)
-                active_ids.update(s.job_id for s in statuses if s.state not in ("COMPLETING", "COMPLETI"))
+                squeue_reachable.add(cluster_name)
+                for s in statuses:
+                    squeue_states[s.job_id] = s.state
             except Exception:
-                # If we can't reach the cluster, don't mark jobs as cancelled
-                active_ids.update(pending_by_cluster[cluster_name])
+                pass  # Cluster unreachable — don't touch its jobs
 
-        # Also check for .done markers (completed but not yet detected)
+        # Step 2: Check for .done markers
         try:
             completions = self.check_completions()
             completed_ids = {c.job_id for c in completions}
         except Exception:
+            completions = []
             completed_ids = set()
 
-        # Reconcile: mark stale jobs
-        all_pending = set()
-        for ids in pending_by_cluster.values():
-            all_pending.update(ids)
+        # Step 3: Sync each active job
+        synced = 0
+        disappeared_ids = []
 
-        stale = all_pending - active_ids - completed_ids
-        for job_id in stale:
-            self._update_job_status(job_id, "cancelled")
+        for job_id in active_ids:
+            job = None
+            for cluster_jobs in by_cluster.values():
+                if job_id in cluster_jobs:
+                    job = cluster_jobs[job_id]
+                    break
 
-        # Update running jobs
-        for job_id in all_pending & active_ids:
-            self._update_job_status(job_id, "running")
+            if not job:
+                continue
 
-        still_active = len(all_pending) - len(stale) - len(completed_ids)
+            cluster_name = job["cluster"]
+
+            if job_id in completed_ids:
+                # Already handled by check_completions → mark_completed
+                synced += 1
+            elif job_id in squeue_states:
+                # Job is in squeue — sync its state
+                self.db.sync_job_state(job_id, squeue_states[job_id])
+                synced += 1
+            elif cluster_name in squeue_reachable:
+                # Cluster is reachable but job not in squeue and no marker
+                # → it disappeared (preempted, killed, OOM without trap)
+                self.db.mark_disappeared(job_id)
+                disappeared_ids.append(job_id)
+                synced += 1
+            # else: cluster unreachable — leave job status unchanged
+
+        still_active = len(self.db.get_active_job_ids())
 
         return {
-            "reconciled": len(stale),
-            "completed_detected": len(completed_ids),
-            "still_active": max(0, still_active),
-            "cancelled_ids": sorted(stale) if stale else [],
+            "synced": synced,
+            "completed": len(completed_ids),
+            "disappeared": len(disappeared_ids),
+            "disappeared_ids": disappeared_ids,
+            "still_active": still_active,
         }
 
     def _record_job(

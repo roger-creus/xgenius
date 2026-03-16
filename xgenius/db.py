@@ -39,6 +39,17 @@ class XGeniusDB:
     - hypotheses: tracks research hypotheses (LLM creates, xgenius + LLM update)
     """
 
+    # Valid job states and their meanings:
+    # submitted  — job sent to SLURM, not yet running
+    # pending    — job is in SLURM queue waiting for resources
+    # running    — job is executing on compute node
+    # completed  — job finished with exit_code 0
+    # failed     — job finished with non-zero exit_code
+    # cancelled  — job was cancelled via scancel
+    # timeout    — job hit walltime limit
+    # oom        — job killed by OOM
+    # disappeared — job vanished from squeue without a .done marker (unknown cause)
+
     def __init__(self, config: XGeniusConfig):
         self.config = config
         xgenius_dir = ensure_xgenius_dir(config)
@@ -60,6 +71,7 @@ class XGeniusDB:
                     submitted_at TEXT NOT NULL,
                     started_at TEXT DEFAULT NULL,
                     completed_at TEXT DEFAULT NULL,
+                    last_checked_at TEXT DEFAULT NULL,
                     walltime_seconds REAL DEFAULT 0,
                     gpu_hours REAL DEFAULT 0,
                     gpus INTEGER DEFAULT 1,
@@ -336,6 +348,79 @@ class XGeniusDB:
     # =========================================================================
     # UTILITY
     # =========================================================================
+
+    def sync_job_state(self, job_id: str, slurm_state: str) -> str:
+        """Update a job's status based on its SLURM state.
+
+        Maps SLURM states to xgenius states and updates the DB.
+        Returns the new xgenius status.
+        """
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+        # Map SLURM states to xgenius states
+        state_map = {
+            "PENDING": "pending",
+            "RUNNING": "running",
+            "COMPLETING": "running",  # still running, cleaning up
+            "COMPLETED": "completed",
+            "FAILED": "failed",
+            "CANCELLED": "cancelled",
+            "TIMEOUT": "timeout",
+            "OUT_OF_MEMORY": "oom",
+            "PREEMPTED": "disappeared",
+            "NODE_FAIL": "failed",
+            "DEADLINE": "timeout",
+        }
+        # Handle truncated states from squeue formatting
+        for slurm_key, xg_state in list(state_map.items()):
+            if slurm_state.startswith(slurm_key[:6]):
+                new_status = xg_state
+                break
+        else:
+            new_status = "running" if slurm_state else "disappeared"
+
+        with _connect(self.db_path) as conn:
+            # Get current status
+            row = conn.execute("SELECT status FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+            if not row:
+                return new_status
+
+            old_status = row["status"]
+
+            # Don't overwrite terminal states (completed/failed already have marker data)
+            if old_status in ("completed", "failed") and new_status not in ("completed", "failed"):
+                conn.execute("UPDATE jobs SET last_checked_at=? WHERE job_id=?", (now, job_id))
+                return old_status
+
+            # Update
+            updates = {"status": new_status, "last_checked_at": now}
+            if new_status == "running" and old_status in ("submitted", "pending"):
+                updates["started_at"] = now
+
+            set_clause = ", ".join(f"{k}=?" for k in updates)
+            values = list(updates.values()) + [job_id]
+            conn.execute(f"UPDATE jobs SET {set_clause} WHERE job_id=?", values)
+
+        return new_status
+
+    def mark_disappeared(self, job_id: str) -> None:
+        """Mark a job as disappeared (vanished from squeue without .done marker)."""
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        with _connect(self.db_path) as conn:
+            row = conn.execute("SELECT status FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+            if row and row["status"] not in ("completed", "failed"):
+                conn.execute(
+                    "UPDATE jobs SET status='disappeared', last_checked_at=?, completed_at=? WHERE job_id=?",
+                    (now, now, job_id)
+                )
+
+    def get_active_job_ids(self) -> set[str]:
+        """Get job IDs that are in non-terminal states."""
+        with _connect(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT job_id FROM jobs WHERE status IN ('submitted', 'pending', 'running')"
+            ).fetchall()
+            return {r["job_id"] for r in rows}
 
     def reset(self) -> None:
         """Clear all data (called by xgenius reset)."""

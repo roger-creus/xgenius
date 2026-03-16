@@ -90,20 +90,22 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
 
             db = job_manager.db
 
-            # Reconcile DB with actual SLURM state
+            # Full state sync: update DB from squeue + .done markers
             recon = job_manager.reconcile()
-            reconciled_count = recon.get("reconciled", 0)
-            reconciled_ids = recon.get("cancelled_ids", [])
-            if reconciled_count > 0:
-                _log(f"Reconciled {reconciled_count} stale job(s): {reconciled_ids}")
+            synced = recon.get("synced", 0)
+            disappeared_ids = recon.get("disappeared_ids", [])
+            completed = recon.get("completed", 0)
 
-            # Check how many jobs are still pending (from DB)
-            pending = db.get_pending_job_ids()
+            if synced > 0:
+                _log(f"Synced {synced} job(s): {completed} completed, {len(disappeared_ids)} disappeared, {recon.get('still_active', 0)} still active")
+
+            # Check how many jobs are still active (from DB)
+            pending = db.get_active_job_ids()
 
             # If jobs disappeared, trigger Claude to investigate
-            if reconciled_count > 0:
-                prompt = db.build_wakeup_prompt(reconciled_ids=reconciled_ids)
-                _log(f"Triggering Claude for {reconciled_count} disappeared job(s)")
+            if disappeared_ids:
+                prompt = db.build_wakeup_prompt(reconciled_ids=disappeared_ids)
+                _log(f"Triggering Claude for {len(disappeared_ids)} disappeared job(s)")
 
                 from xgenius.config import get_project_dir
                 project_dir = get_project_dir(config)
@@ -156,7 +158,7 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
 
                 # Build prompt from DB (full status overview) and trigger Claude
                 prompt = db.build_wakeup_prompt(completions=completions)
-                _log(f"Triggering Claude with {len(completions)} completion(s), {len(db.get_pending_job_ids())} remaining")
+                _log(f"Triggering Claude with {len(completions)} completion(s), {len(db.get_active_job_ids())} remaining")
 
                 from xgenius.config import get_project_dir
                 project_dir = get_project_dir(config)
