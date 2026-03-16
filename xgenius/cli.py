@@ -338,7 +338,7 @@ When a job fails:
 4. Log files are stored at `{scratch}/.xgenius/logs/{experiment_id}_{job_id}.out` on the cluster
 
 ### Debug Log
-When you encounter errors (cluster issues, submission failures, crashes, unexpected behavior), append a timestamped entry to `DEBUG.md` in the project root. Format:
+When you encounter errors (cluster issues, submission failures, crashes, unexpected behavior), append a timestamped entry to `.xgenius/DEBUG.md`. Format:
 ```
 ## YYYY-MM-DD HH:MM — Brief title
 Description of what went wrong, what you tried, and the outcome.

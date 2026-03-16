@@ -227,9 +227,8 @@ def ensure_xgenius_dir(config: XGeniusConfig) -> str:
             with open(fpath, "w") as f:
                 pass
 
-    # Create DEBUG.md in project root if missing
-    project_dir = get_project_dir(config)
-    debug_path = os.path.join(project_dir, "DEBUG.md")
+    # Create DEBUG.md in .xgenius/
+    debug_path = os.path.join(xgenius_dir, "DEBUG.md")
     if not os.path.exists(debug_path):
         with open(debug_path, "w") as f:
             f.write("# Debug Log\n\nErrors and issues encountered during autonomous research.\n")
