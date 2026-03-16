@@ -118,6 +118,7 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                 continue
 
             if not pending:
+                _log("No pending jobs. Waiting for new submissions...")
                 time.sleep(poll_interval)
                 continue
 
