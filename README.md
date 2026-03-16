@@ -164,14 +164,14 @@ Use two terminals (tmux recommended):
 ```bash
 # Terminal 1: kick off the agent (non-interactive, fully autonomous)
 cd auto-myproject
-claude -p "Start the autonomous research loop. Read research_goal.md and begin." --dangerously-skip-permissions
+claude -p "Start the autonomous research loop. Read CLAUDE.md and research_goal.md and begin." --dangerously-skip-permissions
 
 # Terminal 2: start the watcher daemon
 cd auto-myproject
 xgenius watch
 ```
 
-The agent runs non-interactively (`-p` mode), does its work (reads goal, submits experiments), and exits. The watcher daemon polls clusters for completed jobs and triggers `claude --continue -p "..."` to wake the agent up when results are ready. This cycle repeats autonomously.
+The agent runs non-interactively (`-p` mode), does its work (reads goal, submits experiments), and exits. The watcher daemon polls clusters for completed jobs and triggers a **fresh** `claude -p "..."` session with full status context when results are ready. Each wake-up is a clean session — no stale context accumulation.
 
 **Safety:** The watcher will never trigger Claude if another Claude process is already running in the project directory. Completions are accumulated and delivered in the next cycle.
 

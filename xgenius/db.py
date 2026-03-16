@@ -346,29 +346,34 @@ class XGeniusDB:
     def build_wakeup_prompt(self, completions: list = None, reconciled_ids: list = None) -> str:
         """Build the prompt sent to Claude when the watcher triggers it.
 
-        Includes full status overview so Claude knows exactly what's going on.
+        This is a FRESH session — Claude has no prior context.
+        The prompt must be fully self-contained with everything Claude needs.
         """
         status = self.get_full_status()
         parts = []
 
+        parts.append("You are an autonomous research agent. Read CLAUDE.md and research_goal.md for full instructions.")
+        parts.append("This is a fresh session — review all state before acting.\n")
+
         # What just happened
         if completions:
-            parts.append("## Newly completed experiments:")
+            parts.append("## What just happened:")
             for c in completions:
                 result = "SUCCESS" if c.exit_code == 0 else f"FAILED (exit={c.exit_code})"
                 parts.append(f"- {c.experiment_id} (job {c.job_id}, {c.cluster}): {result}")
             parts.append("")
 
         if reconciled_ids:
-            parts.append(f"## {len(reconciled_ids)} job(s) disappeared from SLURM:")
+            parts.append(f"## {len(reconciled_ids)} job(s) disappeared from SLURM (preempted/killed/timeout):")
             for jid in reconciled_ids:
                 parts.append(f"- Job {jid}")
             parts.append("")
 
         # Overall status
         sc = status["job_status_counts"]
-        parts.append(f"## Overall: {status['total_jobs']} total jobs — " +
-                      ", ".join(f"{v} {k}" for k, v in sorted(sc.items())))
+        if sc:
+            parts.append(f"## Job overview: {status['total_jobs']} total — " +
+                          ", ".join(f"{v} {k}" for k, v in sorted(sc.items())))
         parts.append("")
 
         # Per-hypothesis breakdown
@@ -389,12 +394,15 @@ class XGeniusDB:
                 parts.append(f"  {info['description']}")
             parts.append("")
 
-        # Instructions
-        parts.append("## Your next steps:")
-        parts.append("1. Check `results/experiments.csv` and `results/hypotheses.csv` for existing results")
-        parts.append("2. For READY FOR ANALYSIS hypotheses: pull results (`xgenius pull`), parse CSVs, update results bank, update hypothesis status")
-        parts.append("3. For WAITING hypotheses: do NOT conclude — wait for all experiments to finish")
-        parts.append("4. If all hypotheses analyzed: formulate new hypotheses, submit new experiments")
-        parts.append("5. Commit and push all changes before exiting")
+        # What to do
+        parts.append("## Your tasks (in order):")
+        parts.append("1. Read CLAUDE.md for full tool documentation and conventions")
+        parts.append("2. Read research_goal.md for the research objective")
+        parts.append("3. Check results bank: `cat results/experiments.csv` and `cat results/hypotheses.csv`")
+        parts.append("4. For READY FOR ANALYSIS hypotheses: pull results (`xgenius pull --cluster NAME`), parse the CSVs from `results/CLUSTER/`, update the results bank, update hypothesis status")
+        parts.append("5. For WAITING hypotheses: do NOT conclude — wait for all experiments to finish")
+        parts.append("6. If all hypotheses are analyzed: formulate new hypotheses and submit new experiments")
+        parts.append("7. Commit and push all changes before exiting")
+        parts.append("8. Exit when done — the watcher will trigger you again when more jobs complete")
 
         return "\n".join(parts)

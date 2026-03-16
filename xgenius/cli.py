@@ -147,7 +147,7 @@ def cmd_init(args):
         },
         "watcher": {
             "poll_interval_seconds": 60,
-            "trigger_command": "claude --continue --dangerously-skip-permissions",
+            "trigger_command": "claude --dangerously-skip-permissions",
         },
         "clusters": clusters,
     }

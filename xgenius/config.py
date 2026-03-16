@@ -60,7 +60,7 @@ class SafetyConfig:
 class WatcherConfig:
     """Configuration for the background completion watcher."""
     poll_interval_seconds: int = 60
-    trigger_command: str = "claude --continue --dangerously-skip-permissions"
+    trigger_command: str = "claude --dangerously-skip-permissions"
 
 
 @dataclass
