@@ -97,21 +97,44 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
     project_dir = get_project_dir(config)
 
     def _is_claude_active() -> bool:
-        """Check if a watcher-triggered Claude is still running (lock file only).
+        """Check if any Claude process is active in this project directory.
 
-        We only check the watcher's own lock file — not other Claude processes.
-        This avoids false positives from unrelated Claude sessions.
+        Checks both the watcher lock AND running claude processes whose
+        cwd matches our project directory.
         """
-        if not os.path.exists(lock_path):
-            return False
+        # Check watcher lock first
+        if os.path.exists(lock_path):
+            try:
+                with open(lock_path) as f:
+                    pid = int(f.read().strip())
+                os.kill(pid, 0)
+                return True
+            except (ValueError, ProcessLookupError, PermissionError):
+                os.remove(lock_path)
+
+        # Check for claude processes in our project directory
         try:
-            with open(lock_path) as f:
-                pid = int(f.read().strip())
-            os.kill(pid, 0)
-            return True
-        except (ValueError, ProcessLookupError, PermissionError):
-            os.remove(lock_path)
-            return False
+            result = subprocess.run(
+                ["bash", "-c", f"lsof +D '{project_dir}' 2>/dev/null | grep claude | head -1"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.stdout.strip():
+                return True
+        except Exception:
+            pass
+
+        # Simpler fallback: check /proc for claude processes with our cwd
+        try:
+            result = subprocess.run(
+                ["bash", "-c", f"ls -la /proc/*/cwd 2>/dev/null | grep '{project_dir}' | xargs -I{{}} dirname {{}} | xargs -I{{}} basename {{}} | while read pid; do cat /proc/$pid/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q claude && echo $pid; done"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.stdout.strip():
+                return True
+        except Exception:
+            pass
+
+        return False
 
     def _acquire_lock():
         with open(lock_path, "w") as f:
