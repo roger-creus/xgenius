@@ -444,7 +444,7 @@ When you need to build/rebuild the container:
     if os.path.exists(claude_md_path):
         with open(claude_md_path) as f:
             content = f.read()
-        if "xgenius" not in content.lower():
+        if "## xgenius — Autonomous Research Tools" not in content:
             with open(claude_md_path, "a") as f:
                 f.write(xgenius_section)
             console.print("[green]Appended xgenius docs to CLAUDE.md[/green]")
