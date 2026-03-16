@@ -54,45 +54,18 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
     from xgenius.config import get_project_dir
     project_dir = get_project_dir(config)
 
-    def _is_claude_active() -> bool:
-        """Check if any Claude process is active in this project directory.
-
-        Checks both the watcher lock AND running claude processes whose
-        cwd matches our project directory.
-        """
-        # Check watcher lock first
-        if os.path.exists(lock_path):
-            try:
-                with open(lock_path) as f:
-                    pid = int(f.read().strip())
-                os.kill(pid, 0)
-                return True
-            except (ValueError, ProcessLookupError, PermissionError):
-                os.remove(lock_path)
-
-        # Check for claude processes in our project directory
+    def _is_trigger_locked() -> bool:
+        """Check if a previous watcher trigger is still running (lock file only)."""
+        if not os.path.exists(lock_path):
+            return False
         try:
-            result = subprocess.run(
-                ["bash", "-c", f"lsof +D '{project_dir}' 2>/dev/null | grep claude | head -1"],
-                capture_output=True, text=True, timeout=5,
-            )
-            if result.stdout.strip():
-                return True
-        except Exception:
-            pass
-
-        # Simpler fallback: check /proc for claude processes with our cwd
-        try:
-            result = subprocess.run(
-                ["bash", "-c", f"ls -la /proc/*/cwd 2>/dev/null | grep '{project_dir}' | xargs -I{{}} dirname {{}} | xargs -I{{}} basename {{}} | while read pid; do cat /proc/$pid/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q claude && echo $pid; done"],
-                capture_output=True, text=True, timeout=5,
-            )
-            if result.stdout.strip():
-                return True
-        except Exception:
-            pass
-
-        return False
+            with open(lock_path) as f:
+                pid = int(f.read().strip())
+            os.kill(pid, 0)
+            return True
+        except (ValueError, ProcessLookupError, PermissionError):
+            os.remove(lock_path)
+            return False
 
     def _acquire_lock():
         with open(lock_path, "w") as f:
@@ -109,9 +82,9 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
 
     while True:
         try:
-            # Don't trigger if Claude is already active in this project
-            if _is_claude_active():
-                _log("Claude is active in this project. Skipping this cycle.")
+            # Don't trigger if a previous watcher trigger is still running
+            if _is_trigger_locked():
+                _log("Previous trigger still running. Skipping this cycle.")
                 time.sleep(poll_interval)
                 continue
 
