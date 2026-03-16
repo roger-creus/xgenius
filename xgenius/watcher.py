@@ -91,14 +91,22 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
             except Exception as e:
                 _log(f"Failed to check completions: {e}")
 
-            # Step 3: Pull results for new completions
+            # Step 3: Pull results AND slurm logs for new completions
             for c in completions:
+                # Pull experiment results
                 try:
                     job_manager.pull_results(cluster_name=c.cluster, job_id=c.job_id)
-                    db.mark_results_pulled(c.job_id)
                     _log(f"Completed: {c.experiment_id} (job {c.job_id}, exit={c.exit_code}) — results pulled")
                 except Exception as e:
-                    _log(f"Completed: {c.experiment_id} (job {c.job_id}, exit={c.exit_code}) — pull failed: {e}")
+                    _log(f"Completed: {c.experiment_id} (job {c.job_id}, exit={c.exit_code}) — results pull failed: {e}")
+
+                # Pull SLURM log files to local .xgenius/slurm_logs/
+                try:
+                    job_manager.pull_slurm_logs(c.cluster, c.job_id, c.experiment_id)
+                    db.mark_results_pulled(c.job_id)
+                    _log(f"Pulled slurm logs for {c.experiment_id}")
+                except Exception as e:
+                    _log(f"Failed to pull slurm logs for {c.experiment_id}: {e}")
 
             # Step 4: If new completions, trigger Claude
             if completions:
