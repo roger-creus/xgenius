@@ -491,7 +491,6 @@ def cmd_submit(args):
     """Submit a job to a SLURM cluster."""
     config = _load_config(args)
     from xgenius.jobs import JobManager
-    from xgenius.journal import ResearchJournal
 
     manager = JobManager(config)
     result = manager.submit(
@@ -506,16 +505,6 @@ def cmd_submit(args):
         walltime=args.walltime,
     )
 
-    # Auto-record in journal if hypothesis_id provided
-    if result.success and args.hypothesis_id:
-        journal = ResearchJournal(config)
-        journal.add_experiment(
-            hypothesis_id=args.hypothesis_id,
-            cluster=args.cluster,
-            job_id=result.job_id,
-            command=args.command,
-        )
-
     _output(result.to_dict(), args.json)
     if not result.success:
         sys.exit(1)
@@ -527,13 +516,11 @@ def cmd_batch_submit(args):
     """Submit multiple jobs from a config file."""
     config = _load_config(args)
     from xgenius.jobs import JobManager
-    from xgenius.journal import ResearchJournal
     from xgenius.config import get_xgenius_dir, ensure_xgenius_dir
     import shutil
     import time as _time
 
     manager = JobManager(config)
-    journal = ResearchJournal(config)
 
     with open(args.file) as f:
         experiments = json.load(f)
@@ -563,13 +550,6 @@ def cmd_batch_submit(args):
             memory=exp.get("memory"),
             walltime=exp.get("walltime"),
         )
-        if result.success and exp.get("hypothesis_id"):
-            journal.add_experiment(
-                hypothesis_id=exp["hypothesis_id"],
-                cluster=exp["cluster"],
-                job_id=result.job_id,
-                command=exp["command"],
-            )
         results.append(result.to_dict())
 
     _output(results, args.json)

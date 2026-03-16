@@ -47,6 +47,10 @@ class ResearchJournal:
         with open(self.journal_path, "a") as f:
             f.write(f"\n---\n**[{ts}]**\n\n{entry}\n")
 
+    def add_experiment(self, hypothesis_id: str, cluster: str, job_id: str, command: str) -> None:
+        """Auto-record an experiment submission in the journal."""
+        self.write(f"Submitted job `{job_id}` on `{cluster}` for `{hypothesis_id}`: `{command}`")
+
     def clear(self) -> None:
         """Clear the journal (called by xgenius reset)."""
         if os.path.exists(self.journal_path):
