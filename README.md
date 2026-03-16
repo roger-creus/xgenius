@@ -360,11 +360,17 @@ All commands support `--json` for structured output.
 | `xgenius journal update-hypothesis` | Update hypothesis status |
 | `xgenius budget` | Show remaining compute budget |
 | `xgenius validate` | Dry-run safety check on a command |
-| `xgenius audit` | View audit log |
-| `xgenius job-history` | View past jobs with walltime, resources, and log paths |
-| `xgenius reconcile` | Sync local job tracker with actual SLURM state |
+| `xgenius db summary` | Full status overview from SQLite DB |
+| `xgenius db jobs` | List jobs (filter by `--hypothesis-id`, `--status`) |
+| `xgenius db active` | Currently running/submitted jobs |
+| `xgenius db hypothesis-check --id H` | Check if all jobs for a hypothesis are done |
+| `xgenius results summary` | Results bank overview |
+| `xgenius journal read` | Read research journal (Claude's memory) |
+| `xgenius journal write "..."` | Append to research journal |
+| `xgenius report` | Generate full research report from journal |
 | `xgenius reset` | Clear all state for a fresh research run |
 | `xgenius watch` | Background daemon (triggers Claude on job completion) |
+| `xgenius dashboard` | Web-based DB browser for human inspection |
 
 ## Citation
 

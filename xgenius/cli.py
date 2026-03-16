@@ -1012,6 +1012,14 @@ def cmd_db(args):
         _output({"hypothesis_id": hid, "complete": complete, **summary}, args.json)
 
 
+# --- Dashboard ---
+
+def cmd_dashboard(args):
+    """Start the web dashboard for inspecting the DB."""
+    from xgenius.dashboard import run_dashboard
+    run_dashboard(config_path=args.config, port=args.port)
+
+
 # --- Watch ---
 
 def cmd_watch(args):
@@ -1210,6 +1218,11 @@ def main():
     p = subparsers.add_parser("watch", parents=[parent_parser], help="Start background watcher daemon")
     p.add_argument("--quiet", action="store_true", help="Suppress output")
     p.set_defaults(func=cmd_watch)
+
+    # dashboard
+    p = subparsers.add_parser("dashboard", parents=[parent_parser], help="Open web dashboard to inspect DB")
+    p.add_argument("--port", type=int, default=8765, help="Port number")
+    p.set_defaults(func=cmd_dashboard)
 
     args = parser.parse_args()
     args.func(args)
