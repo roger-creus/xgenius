@@ -32,29 +32,65 @@ def _load_pending_jobs(xgenius_dir: str) -> set[str]:
     return pending
 
 
-def _build_trigger_prompt(completions: list, remaining_jobs: int) -> str:
-    """Build the prompt to send to Claude when jobs complete."""
+def _build_trigger_prompt(completions: list, remaining_jobs: int, xgenius_dir: str = "") -> str:
+    """Build the prompt to send to Claude when jobs complete.
+
+    Includes a full status breakdown by hypothesis so Claude knows
+    exactly which hypotheses are ready for analysis vs still running.
+    """
     parts = []
 
+    # List what just completed
+    parts.append("## Newly completed experiments:")
     for c in completions:
-        status = "successfully" if c.exit_code == 0 else f"with exit code {c.exit_code}"
-        parts.append(
-            f"Experiment {c.experiment_id} (job {c.job_id}) finished {status} "
-            f"on {c.cluster}. Output at: {c.output_dir}"
-        )
+        status = "SUCCESS" if c.exit_code == 0 else f"FAILED (exit={c.exit_code})"
+        parts.append(f"- {c.experiment_id} (job {c.job_id}, {c.cluster}): {status}")
 
-    prompt = "\n".join(parts)
+    # Build hypothesis status summary from jobs.jsonl
+    if xgenius_dir:
+        jobs_path = os.path.join(xgenius_dir, "jobs.jsonl")
+        if os.path.exists(jobs_path):
+            hyp_status = {}  # {hypothesis_id: {submitted: [], running: [], completed: [], failed: [], cancelled: []}}
+            with open(jobs_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    job = json.loads(line)
+                    hid = job.get("hypothesis_id", "unknown")
+                    status = job.get("status", "unknown")
+                    eid = job.get("experiment_id", job.get("job_id", "?"))
+                    if hid not in hyp_status:
+                        hyp_status[hid] = {"submitted": [], "running": [], "completed": [], "failed": [], "cancelled": []}
+                    if status in hyp_status[hid]:
+                        hyp_status[hid][status].append(eid)
 
-    if remaining_jobs > 0:
-        prompt += f"\n\n{remaining_jobs} job(s) still running/pending."
-        prompt += "\nRun 'xgenius status --json' to check their status."
-    else:
-        prompt += "\n\nAll submitted jobs have completed."
+            if hyp_status:
+                parts.append("\n## Hypothesis status summary:")
+                for hid in sorted(hyp_status.keys()):
+                    s = hyp_status[hid]
+                    total = sum(len(v) for v in s.values())
+                    done = len(s["completed"])
+                    failed = len(s["failed"])
+                    running = len(s["running"]) + len(s["submitted"])
+                    cancelled = len(s["cancelled"])
 
-    prompt += "\nRun 'xgenius journal context' for full research state."
-    prompt += "\nAnalyze the results and decide next steps."
+                    if running == 0 and total > 0:
+                        tag = "READY FOR ANALYSIS" if done > 0 else "ALL CANCELLED"
+                    else:
+                        tag = f"WAITING ({running} still running)"
 
-    return prompt
+                    parts.append(f"- {hid}: {done} done, {failed} failed, {running} running, {cancelled} cancelled — **{tag}**")
+
+    parts.append(f"\n{remaining_jobs} job(s) still running/pending total.")
+    parts.append("")
+    parts.append("## Your next steps:")
+    parts.append("1. Run `xgenius journal context` for full research state")
+    parts.append("2. For hypotheses marked READY FOR ANALYSIS: pull results, analyze, record in journal and results bank")
+    parts.append("3. For hypotheses still WAITING: do NOT conclude yet, wait for all experiments to finish")
+    parts.append("4. If all hypotheses are analyzed: formulate new hypotheses and submit more experiments")
+
+    return "\n".join(parts)
 
 
 def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> None:
@@ -223,7 +259,7 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                 remaining = len(_load_pending_jobs(xgenius_dir))
 
                 # Build prompt and trigger Claude
-                prompt = _build_trigger_prompt(completions, remaining)
+                prompt = _build_trigger_prompt(completions, remaining, xgenius_dir=xgenius_dir)
                 _log(f"Triggering Claude with {len(completions)} completion(s), {remaining} remaining")
 
                 from xgenius.config import get_project_dir
