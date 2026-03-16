@@ -338,14 +338,15 @@ When a job fails:
 ### Results Bank
 ALL experiments MUST log metrics to a CSV results bank at `results/all_results.csv`. This is your persistent record of every experiment ever run, committed to git.
 
-**Required columns:** `experiment_id`, `hypothesis_id`, `command` — these are always present for traceability.
-**Metric columns:** Project-dependent — you decide what metrics matter and add them as columns. The first time you set up the results bank, examine what metrics the training scripts produce and design the CSV schema accordingly.
+**Required columns:** `experiment_id`, `hypothesis_id`, `command`, `comment` (your notes on what happened), `status` (open/closed/promising) — always present for traceability.
+**Metric columns:** Project-dependent — you decide what metrics matter and add them as columns.
 
 **Your responsibilities:**
 1. Ensure every training script saves its metrics (implement CSV logging if missing)
 2. After pulling results from clusters, parse experiment outputs and append rows to `results/all_results.csv`
-3. Build analysis tools (scripts/notebooks) to query the results bank, compare algorithms, track progress, and identify where to focus next
+3. Build analysis tools (scripts) to query the results bank, compare algorithms, track progress — commit these tools to the repo
 4. Commit `results/all_results.csv` to git after every update
+5. Do NOT conclude on a hypothesis until ALL its experiments have completed — partial results can be misleading
 
 ### Resource Management
 The xgenius.toml [safety] section defines MAXIMUM resource limits. You can request LESS:
