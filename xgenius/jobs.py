@@ -116,6 +116,10 @@ class JobManager:
         self._ssh_clients: dict[str, SSHClient] = {}
         self._xgenius_dir = get_xgenius_dir(config)
 
+        # SQLite DB for operational state
+        from xgenius.db import XGeniusDB
+        self.db = XGeniusDB(config)
+
     def _get_ssh(self, cluster_name: str) -> SSHClient:
         """Get or create an SSH client for a cluster."""
         if cluster_name not in self._ssh_clients:
@@ -283,6 +287,11 @@ class JobManager:
                 experiment_id=experiment_id,
                 hypothesis_id=hypothesis_id,
                 command=command,
+                effective_gpus=effective_gpus,
+                effective_gpu_type=effective_gpu_type,
+                effective_cpus=effective_cpus,
+                effective_memory=effective_memory,
+                effective_walltime=effective_walltime,
             )
 
             self.safety.log_action(
@@ -360,18 +369,7 @@ class JobManager:
 
         Claude uses this to learn how long jobs take and adjust resource requests.
         """
-        jobs_path = os.path.join(self._xgenius_dir, "jobs.jsonl")
-        if not os.path.exists(jobs_path):
-            return []
-
-        entries = []
-        with open(jobs_path) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    entries.append(json.loads(line))
-
-        return entries[-limit:]
+        return self.db.get_all_jobs(limit=limit)
 
     def cancel(self, cluster_name: str, job_ids: list[str]) -> dict:
         """Cancel specific jobs on a cluster.
@@ -576,11 +574,13 @@ class JobManager:
                     # Remove the marker file after reading
                     ssh.run(f"rm -f {marker_path}")
 
-                    # Update local job tracker
-                    self._update_job_status(
-                        completion.job_id,
-                        "completed" if completion.exit_code == 0 else "failed",
-                        gpu_hours=self._estimate_gpu_hours(cname, completion.walltime_seconds),
+                    # Update DB with full completion data
+                    self.db.mark_completed(
+                        job_id=completion.job_id,
+                        exit_code=completion.exit_code,
+                        walltime_seconds=completion.walltime_seconds,
+                        completed_at=completion.completed_at,
+                        output_dir=completion.output_dir,
                     )
                 except (json.JSONDecodeError, KeyError, ValueError):
                     continue
@@ -701,45 +701,32 @@ class JobManager:
         }
 
     def reconcile(self) -> dict:
-        """Reconcile local job tracker with actual SLURM state.
+        """Reconcile DB with actual SLURM state.
 
-        For every job marked as 'submitted' or 'running' locally, check
+        For every job marked as 'submitted' or 'running' in the DB, check
         if it still exists in squeue. If not, and no .done marker exists,
-        mark it as 'cancelled'. If a .done marker exists, process the completion.
-
-        This handles: external cancellation (scancel), job timeouts,
-        jobs that finished but markers weren't detected.
+        mark it as 'cancelled'.
 
         Returns:
             Dict with reconciliation results.
         """
-        jobs_path = os.path.join(self._xgenius_dir, "jobs.jsonl")
-        if not os.path.exists(jobs_path):
+        # Get pending jobs from DB grouped by cluster
+        pending_jobs = self.db.get_pending_jobs()
+        if not pending_jobs:
             return {"reconciled": 0, "still_active": 0}
 
-        # Load locally pending jobs grouped by cluster
         pending_by_cluster: dict[str, set[str]] = {}
-        with open(jobs_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                job = json.loads(line)
-                if job.get("status") in ("submitted", "running"):
-                    cluster = job.get("cluster", "")
-                    if cluster not in pending_by_cluster:
-                        pending_by_cluster[cluster] = set()
-                    pending_by_cluster[cluster].add(job["job_id"])
-
-        if not pending_by_cluster:
-            return {"reconciled": 0, "still_active": 0}
+        for job in pending_jobs:
+            cluster = job["cluster"]
+            if cluster not in pending_by_cluster:
+                pending_by_cluster[cluster] = set()
+            pending_by_cluster[cluster].add(job["job_id"])
 
         # Check actual squeue state per cluster
         active_ids: set[str] = set()
         for cluster_name in pending_by_cluster:
             try:
                 statuses = self.status(cluster_name=cluster_name)
-                # Ignore COMPLETING (CG) jobs — they're done, markers should handle them
                 active_ids.update(s.job_id for s in statuses if s.state not in ("COMPLETING", "COMPLETI"))
             except Exception:
                 # If we can't reach the cluster, don't mark jobs as cancelled
@@ -781,52 +768,37 @@ class JobManager:
         experiment_id: str,
         hypothesis_id: str,
         command: str,
+        effective_gpus: int = 1,
+        effective_gpu_type: str = "",
+        effective_cpus: int = 8,
+        effective_memory: str = "",
+        effective_walltime: str = "",
     ) -> None:
-        """Record a submitted job in the tracker."""
-        ensure_xgenius_dir(self.config)
-        jobs_path = os.path.join(self._xgenius_dir, "jobs.jsonl")
-
-        # Compute the log file path (matches what the SBATCH template uses)
+        """Record a submitted job in the DB."""
         cluster_config = self._get_cluster(cluster)
         log_dir = os.path.join(cluster_config.scratch_path, ".xgenius", "logs")
         log_file = os.path.join(log_dir, f"{experiment_id}_{job_id}.out")
 
-        entry = {
-            "job_id": job_id,
-            "cluster": cluster,
-            "experiment_id": experiment_id,
-            "hypothesis_id": hypothesis_id,
-            "command": command,
-            "status": "submitted",
-            "submitted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "gpu_hours": 0,
-            "log_file": log_file,
-        }
-
-        with open(jobs_path, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+        self.db.record_job(
+            job_id=job_id,
+            cluster=cluster,
+            experiment_id=experiment_id,
+            hypothesis_id=hypothesis_id,
+            command=command,
+            log_file=log_file,
+            gpus=effective_gpus,
+            gpu_type=effective_gpu_type,
+            cpus=effective_cpus,
+            memory=effective_memory,
+            walltime=effective_walltime,
+        )
 
     def _update_job_status(self, job_id: str, new_status: str, gpu_hours: float = 0) -> None:
-        """Update job status in tracker by rewriting the file."""
-        jobs_path = os.path.join(self._xgenius_dir, "jobs.jsonl")
-        if not os.path.exists(jobs_path):
-            return
-
-        lines = []
-        with open(jobs_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                job = json.loads(line)
-                if job.get("job_id") == job_id:
-                    job["status"] = new_status
-                    if gpu_hours:
-                        job["gpu_hours"] = gpu_hours
-                lines.append(json.dumps(job))
-
-        with open(jobs_path, "w") as f:
-            f.write("\n".join(lines) + "\n" if lines else "")
+        """Update job status in DB."""
+        kwargs = {}
+        if gpu_hours:
+            kwargs["gpu_hours"] = gpu_hours
+        self.db.update_job_status(job_id, new_status, **kwargs)
 
     def _estimate_gpu_hours(self, cluster_name: str, walltime_seconds: int) -> float:
         """Estimate GPU-hours for a completed job."""

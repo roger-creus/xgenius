@@ -942,6 +942,14 @@ def cmd_reset(args):
         console.print("Nothing to reset — .xgenius/ directory not found.")
         return
 
+    # Reset SQLite DB
+    from xgenius.db import XGeniusDB
+    try:
+        db = XGeniusDB(config)
+        db.reset()
+    except Exception:
+        pass
+
     files_to_clear = ["jobs.jsonl", "journal.jsonl", "journal_summary.md", "audit.jsonl", "watcher.log"]
     cleared = []
     for fname in files_to_clear:

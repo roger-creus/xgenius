@@ -14,84 +14,6 @@ from xgenius.config import load_config, get_xgenius_dir, ensure_xgenius_dir
 from xgenius.jobs import JobManager
 
 
-def _load_pending_jobs(xgenius_dir: str) -> set[str]:
-    """Load job IDs that are still pending/running."""
-    jobs_path = os.path.join(xgenius_dir, "jobs.jsonl")
-    if not os.path.exists(jobs_path):
-        return set()
-
-    pending = set()
-    with open(jobs_path) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            job = json.loads(line)
-            if job.get("status") in ("submitted", "running"):
-                pending.add(job["job_id"])
-    return pending
-
-
-def _build_trigger_prompt(completions: list, remaining_jobs: int, xgenius_dir: str = "") -> str:
-    """Build the prompt to send to Claude when jobs complete.
-
-    Includes a full status breakdown by hypothesis so Claude knows
-    exactly which hypotheses are ready for analysis vs still running.
-    """
-    parts = []
-
-    # List what just completed
-    parts.append("## Newly completed experiments:")
-    for c in completions:
-        status = "SUCCESS" if c.exit_code == 0 else f"FAILED (exit={c.exit_code})"
-        parts.append(f"- {c.experiment_id} (job {c.job_id}, {c.cluster}): {status}")
-
-    # Build hypothesis status summary from jobs.jsonl
-    if xgenius_dir:
-        jobs_path = os.path.join(xgenius_dir, "jobs.jsonl")
-        if os.path.exists(jobs_path):
-            hyp_status = {}  # {hypothesis_id: {submitted: [], running: [], completed: [], failed: [], cancelled: []}}
-            with open(jobs_path) as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    job = json.loads(line)
-                    hid = job.get("hypothesis_id", "unknown")
-                    status = job.get("status", "unknown")
-                    eid = job.get("experiment_id", job.get("job_id", "?"))
-                    if hid not in hyp_status:
-                        hyp_status[hid] = {"submitted": [], "running": [], "completed": [], "failed": [], "cancelled": []}
-                    if status in hyp_status[hid]:
-                        hyp_status[hid][status].append(eid)
-
-            if hyp_status:
-                parts.append("\n## Hypothesis status summary:")
-                for hid in sorted(hyp_status.keys()):
-                    s = hyp_status[hid]
-                    total = sum(len(v) for v in s.values())
-                    done = len(s["completed"])
-                    failed = len(s["failed"])
-                    running = len(s["running"]) + len(s["submitted"])
-                    cancelled = len(s["cancelled"])
-
-                    if running == 0 and total > 0:
-                        tag = "READY FOR ANALYSIS" if done > 0 else "ALL CANCELLED"
-                    else:
-                        tag = f"WAITING ({running} still running)"
-
-                    parts.append(f"- {hid}: {done} done, {failed} failed, {running} running, {cancelled} cancelled — **{tag}**")
-
-    parts.append(f"\n{remaining_jobs} job(s) still running/pending total.")
-    parts.append("")
-    parts.append("## Your next steps:")
-    parts.append("1. Run `xgenius journal context` for full research state")
-    parts.append("2. For hypotheses marked READY FOR ANALYSIS: pull results, analyze, record in journal and results bank")
-    parts.append("3. For hypotheses still WAITING: do NOT conclude yet, wait for all experiments to finish")
-    parts.append("4. If all hypotheses are analyzed: formulate new hypotheses and submit more experiments")
-
-    return "\n".join(parts)
-
 
 def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> None:
     """Run the background watcher daemon.
@@ -193,30 +115,21 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                 time.sleep(poll_interval)
                 continue
 
-            # Reconcile local tracker with actual SLURM state
+            db = job_manager.db
+
+            # Reconcile DB with actual SLURM state
             recon = job_manager.reconcile()
             reconciled_count = recon.get("reconciled", 0)
             reconciled_ids = recon.get("cancelled_ids", [])
             if reconciled_count > 0:
                 _log(f"Reconciled {reconciled_count} stale job(s): {reconciled_ids}")
 
-            # Check how many jobs are still pending
-            pending = _load_pending_jobs(xgenius_dir)
+            # Check how many jobs are still pending (from DB)
+            pending = db.get_pending_job_ids()
 
-            # If jobs disappeared from squeue (preempted/killed/timed out),
-            # trigger Claude so it can investigate and resubmit
+            # If jobs disappeared, trigger Claude to investigate
             if reconciled_count > 0:
-                remaining = len(pending)
-                prompt = (
-                    f"{reconciled_count} job(s) disappeared from SLURM (preempted, timed out, or killed): "
-                    f"{', '.join(reconciled_ids)}.\n"
-                    f"Run 'xgenius errors --job-id ID --cluster CLUSTER --json' to check what happened.\n"
-                    f"Run 'xgenius logs --job-id ID --cluster CLUSTER --json' to see output.\n"
-                )
-                if remaining > 0:
-                    prompt += f"{remaining} job(s) still running/pending.\n"
-                prompt += "Run 'xgenius journal context' for full research state. Investigate and decide next steps."
-
+                prompt = db.build_wakeup_prompt(reconciled_ids=reconciled_ids)
                 _log(f"Triggering Claude for {reconciled_count} disappeared job(s)")
 
                 from xgenius.config import get_project_dir
@@ -244,23 +157,32 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                 for c in completions:
                     _log(f"Job {c.job_id} ({c.experiment_id}) completed (exit={c.exit_code})")
 
-                # Pull results for completed jobs
+                # Pull results for ALL completed jobs and mark in DB
                 for c in completions:
                     try:
                         job_manager.pull_results(
                             cluster_name=c.cluster,
                             job_id=c.job_id,
                         )
+                        db.mark_results_pulled(c.job_id)
                         _log(f"Pulled results for {c.experiment_id}")
                     except Exception as e:
                         _log(f"Failed to pull results for {c.experiment_id}: {e}")
 
-                # Update pending count
-                remaining = len(_load_pending_jobs(xgenius_dir))
+                # Also pull results for any previously completed but unpulled jobs
+                unpulled = db.get_completed_not_pulled()
+                for job in unpulled:
+                    if job["job_id"] not in {c.job_id for c in completions}:
+                        try:
+                            job_manager.pull_results(cluster_name=job["cluster"], job_id=job["job_id"])
+                            db.mark_results_pulled(job["job_id"])
+                            _log(f"Pulled missed results for {job['experiment_id']}")
+                        except Exception as e:
+                            _log(f"Failed to pull missed results for {job['experiment_id']}: {e}")
 
-                # Build prompt and trigger Claude
-                prompt = _build_trigger_prompt(completions, remaining, xgenius_dir=xgenius_dir)
-                _log(f"Triggering Claude with {len(completions)} completion(s), {remaining} remaining")
+                # Build prompt from DB (full status overview) and trigger Claude
+                prompt = db.build_wakeup_prompt(completions=completions)
+                _log(f"Triggering Claude with {len(completions)} completion(s), {len(db.get_pending_job_ids())} remaining")
 
                 from xgenius.config import get_project_dir
                 project_dir = get_project_dir(config)
