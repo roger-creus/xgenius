@@ -340,7 +340,7 @@ class JobManager:
             # Rich squeue format: job_id, name, state, elapsed, time_limit, nodes,
             # submit_time, start_time, num_gpus, num_cpus, memory, reason
             result = ssh.run(
-                f"squeue -u {cluster.username} -o '%.18i|%.30j|%.8T|%.12M|%.12l|%.6D|%.20V|%.20S|%.4b|%.4C|%.10m|%R' --noheader"
+                f"squeue -u {cluster.username} -o %i|%j|%T|%M|%l|%D|%V|%S|%b|%C|%m|%R --noheader"
             )
 
             if not result.success:
