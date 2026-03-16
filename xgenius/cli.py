@@ -375,8 +375,7 @@ Every training script MUST save a CSV results file during/after execution. The f
 - Contain at minimum: the target metric(s) of interest as specified in research_goal.md
 - Be parseable by you when you wake up — include column headers
 
-Example: a job submitted as `--hypothesis-id h003 --experiment-id pqn_spectral_qbert_s1` should produce:
-`/output_dir/h003__pqn_spectral_qbert_s1.csv`
+The filename format is `{hypothesis_id}__{experiment_id}.csv` — the double underscore separates hypothesis from experiment for easy parsing.
 
 If a training script does NOT save a CSV with this convention, you MUST add it before submitting experiments.
 The watcher pulls these raw CSVs to `results/CLUSTER/` when jobs complete. You then parse them and append to the results bank.
