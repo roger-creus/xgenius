@@ -489,7 +489,7 @@ class XGeniusDB:
         parts.append("1. Read CLAUDE.md for tools and conventions")
         parts.append("2. Read your research journal: `xgenius journal read` (your memory from previous sessions)")
         parts.append("3. Read research_goal.md for the objective")
-        parts.append("4. Check DB: `xgenius job-history --json` for all job states")
+        parts.append("4. Check DB: `xgenius db summary --json` for all job states")
         parts.append("5. Check results bank: `cat results/experiments.csv` and `cat results/hypotheses.csv`")
         parts.append("6. For completed experiments: pull results, parse CSVs, update results bank")
         parts.append("7. Analyze and decide: continue waiting, or formulate new hypotheses")

@@ -325,7 +325,12 @@ Typical issues: outdated base images, missing dependencies, wrong Python version
 - `xgenius budget` — Check remaining compute budget
 - `xgenius validate --command "python script.py"` — Dry-run safety check
 - `xgenius audit [--limit N]` — View audit log
-- `xgenius job-history [--limit N] --json` — View past jobs with walltime, resources, log file paths, and status
+- `xgenius db summary --json` — Full status overview (jobs by status, per-hypothesis breakdown)
+- `xgenius db jobs --json` — All jobs (filter: `--hypothesis-id H`, `--status running`)
+- `xgenius db job --id JOBID --json` — Single job details
+- `xgenius db active --json` — Currently running/submitted jobs
+- `xgenius db hypothesis-check --id H --json` — Check if all jobs for a hypothesis are done
+- `xgenius db hypotheses --json` — All hypotheses in DB
 - `xgenius reset` — Clear all state for a fresh research run
 
 All commands support `--json` for structured output.
@@ -334,7 +339,7 @@ All commands support `--json` for structured output.
 When a job fails:
 1. Run `xgenius errors --experiment-id EXPERIMENT_ID --json` to see tracebacks and error messages
 2. Run `xgenius logs --experiment-id EXPERIMENT_ID --json` to see full stdout
-3. Run `xgenius job-history --json` to see all jobs with their log file paths, statuses, and walltimes
+3. Run `xgenius db jobs --json` to see all jobs with their log file paths, statuses, and walltimes
 4. Log files are stored at `{scratch}/.xgenius/logs/{experiment_id}_{job_id}.out` on the cluster
 
 ### Debug Log
@@ -402,7 +407,7 @@ The xgenius.toml [safety] section defines MAXIMUM resource limits. You can reque
 - `--memory "16G"` if the job doesn't need much RAM
 - `--cpus 4` for a lightweight job
 
-Use `xgenius job-history --json` to see how long past jobs took, then adjust walltime accordingly.
+Use `xgenius db jobs --status completed --json` to see how long past jobs took, then adjust walltime accordingly.
 Use `xgenius status --json` to see pending/running jobs with their elapsed time, submit time, and pending reason.
 
 ### Two State Systems — DB + Journal
@@ -410,7 +415,7 @@ Use `xgenius status --json` to see pending/running jobs with their elapsed time,
 **SQLite DB** (`.xgenius/xgenius.db`) — AUTOMATED operational state. Updated by the watcher every cycle.
 - Job statuses (submitted/pending/running/completed/failed/etc.)
 - Walltimes, exit codes, timestamps, results_pulled flag
-- Query with: `xgenius job-history --json`, `xgenius status --json`
+- Query with: `xgenius db summary --json`, `xgenius db jobs --json`, `xgenius db active --json`
 
 **Research Journal** (`.xgenius/journal.md`) — YOUR persistent research memory. Written by you.
 - What hypotheses were tried and why
@@ -422,12 +427,12 @@ Use `xgenius status --json` to see pending/running jobs with their elapsed time,
 
 **Every session, you MUST:**
 1. Read the journal (`xgenius journal read`) to recall what previous sessions did
-2. Check the DB (`xgenius job-history --json`) for current job states
+2. Check the DB (`xgenius db summary --json`) for current job states
 3. Before exiting, write a journal entry summarizing what you did and what to do next
 
 ### Research Workflow
 1. Read `xgenius journal read` for research memory from previous sessions
-2. Check `xgenius job-history --json` for DB state (all job statuses, walltimes, etc.)
+2. Check `xgenius db summary --json` for all job states and hypothesis status
 3. Formulate a hypothesis and record it
 3. Modify code to test the hypothesis
 4. Run `xgenius sync` to push code to cluster
@@ -1005,14 +1010,35 @@ def cmd_reconcile(args):
 
 # --- Job History ---
 
-def cmd_job_history(args):
-    """Show history of tracked jobs with walltime and resources."""
+def cmd_db(args):
+    """Query the xgenius DB."""
     config = _load_config(args)
-    from xgenius.jobs import JobManager
+    from xgenius.db import XGeniusDB
 
-    manager = JobManager(config)
-    history = manager.job_history(limit=args.limit)
-    _output(history, args.json)
+    db = XGeniusDB(config)
+
+    if args.db_command == "jobs":
+        if args.hypothesis_id:
+            _output(db.get_jobs_by_hypothesis(args.hypothesis_id), args.json)
+        elif args.status:
+            _output(db.get_jobs_by_status(args.status), args.json)
+        else:
+            _output(db.get_all_jobs(limit=args.limit), args.json)
+    elif args.db_command == "job":
+        _output(db.get_job(args.id) or {"error": "Job not found"}, args.json)
+    elif args.db_command == "hypotheses":
+        _output(db.get_all_hypotheses(), args.json)
+    elif args.db_command == "summary":
+        status = db.get_full_status()
+        _output(status, args.json)
+    elif args.db_command == "active":
+        jobs = db.get_pending_jobs()
+        _output(jobs, args.json)
+    elif args.db_command == "hypothesis-check":
+        hid = args.id
+        summary = db.get_hypothesis_job_summary(hid)
+        complete = db.is_hypothesis_complete(hid)
+        _output({"hypothesis_id": hid, "complete": complete, **summary}, args.json)
 
 
 # --- Watch ---
@@ -1182,9 +1208,26 @@ def main():
     p.set_defaults(func=cmd_audit)
 
     # job-history
-    p = subparsers.add_parser("job-history", parents=[parent_parser], help="Show tracked job history with walltime/resources")
-    p.add_argument("--limit", type=int, default=50, help="Number of entries")
-    p.set_defaults(func=cmd_job_history)
+    # db (query the operational database)
+    p = subparsers.add_parser("db", parents=[parent_parser], help="Query the xgenius DB")
+    dp = p.add_subparsers(dest="db_command", required=True)
+
+    dj = dp.add_parser("jobs", parents=[parent_parser], help="List jobs (filterable)")
+    dj.add_argument("--hypothesis-id", default=None, help="Filter by hypothesis")
+    dj.add_argument("--status", default=None, help="Filter by status (submitted/running/completed/failed/etc.)")
+    dj.add_argument("--limit", type=int, default=100, help="Max results")
+
+    djob = dp.add_parser("job", parents=[parent_parser], help="Get a single job by ID")
+    djob.add_argument("--id", required=True, help="Job ID")
+
+    dp.add_parser("hypotheses", parents=[parent_parser], help="List all hypotheses in DB")
+    dp.add_parser("summary", parents=[parent_parser], help="Full status overview")
+    dp.add_parser("active", parents=[parent_parser], help="Currently active (submitted/running) jobs")
+
+    dhc = dp.add_parser("hypothesis-check", parents=[parent_parser], help="Check if all jobs for a hypothesis are done")
+    dhc.add_argument("--id", required=True, help="Hypothesis ID")
+
+    p.set_defaults(func=cmd_db)
 
     # reconcile
     p = subparsers.add_parser("reconcile", parents=[parent_parser], help="Reconcile local job tracker with actual SLURM state")
