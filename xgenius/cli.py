@@ -801,25 +801,65 @@ def cmd_results(args):
 # --- Report ---
 
 def cmd_report(args):
-    """Generate a full research report from journal history."""
+    """Spawn a Claude agent to generate a thorough research report."""
+    import subprocess
     config = _load_config(args)
-    from xgenius.journal import ResearchJournal
     from xgenius.config import get_project_dir
 
-    journal = ResearchJournal(config)
-    report = journal.generate_report()
-
-    # Write to file
     project_dir = get_project_dir(config)
     output_path = args.output or os.path.join(project_dir, "research_report.md")
-    with open(output_path, "w") as f:
-        f.write(report)
 
-    if args.json:
-        _output({"output": output_path, "length": len(report)}, True)
+    prompt = f"""You are a research report writer. Generate a thorough, publication-quality research report for a human audience.
+
+## Your task
+Read ALL available data and produce a comprehensive report saved to `{output_path}`.
+
+## Data sources to read (in order)
+1. `research_goal.md` — the original research objective
+2. `xgenius journal read` — the research narrative and decisions made
+3. `xgenius db summary --json` — overview of all jobs and hypotheses
+4. `xgenius db hypotheses --json` — all hypotheses with status and conclusions
+5. `xgenius db jobs --json` — all experiments with walltimes and exit codes
+6. `cat results/experiments.csv` — the results bank with metrics
+7. `cat results/hypotheses.csv` — hypothesis status and notes
+8. `cat .xgenius/DEBUG.md` — any errors encountered
+9. `git log --oneline -50` — recent git history showing research progression
+
+## Report structure
+Write a markdown report with:
+1. **Title and Abstract** — summarize the entire research campaign
+2. **Research Goal** — what was the objective
+3. **Methodology** — how experiments were run (clusters, compute, tools)
+4. **Baselines** — baseline results with tables
+5. **Investigations** — for each hypothesis: motivation, what was tried, results (with tables/numbers), analysis, conclusion
+6. **Key Findings** — what worked, what didn't, and why
+7. **Performance Progression** — show how performance improved over time, from baselines through each iteration
+8. **Compute Statistics** — total jobs, GPU-hours, clusters used, success/failure rates
+9. **Conclusions and Future Work** — what was achieved, what remains
+
+## Requirements
+- Include ACTUAL NUMBERS from the results bank — do not make up data
+- Create comparison tables showing baseline vs best results
+- Create Python plots using matplotlib and save them to `results/plots/` — embed them in the report as `![](results/plots/filename.png)`
+- Plot learning curves, bar charts comparing algorithms, progression over time
+- Be thorough — this is for a human who wants to understand everything that happened
+- Write clearly and technically — this could go in a paper appendix
+
+Save the final report to `{output_path}`.
+"""
+
+    console.print("[bold]Generating research report...[/bold]")
+    console.print("This spawns a Claude agent to analyze all data and produce a thorough report.")
+
+    result = subprocess.run(
+        ["claude", "-p", prompt, "--dangerously-skip-permissions"],
+        cwd=project_dir,
+    )
+
+    if result.returncode == 0:
+        console.print(f"[green]Report saved to {output_path}[/green]")
     else:
-        console.print(f"[green]Report written to {output_path}[/green]")
-        console.print(f"Length: {len(report)} characters, {len(report.splitlines())} lines")
+        console.print(f"[red]Report generation failed (exit code {result.returncode})[/red]")
 
 
 # --- Budget ---
