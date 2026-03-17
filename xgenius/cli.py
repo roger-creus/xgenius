@@ -807,15 +807,20 @@ def cmd_report(args):
     from xgenius.config import get_project_dir
 
     project_dir = get_project_dir(config)
-    output_md = args.output or os.path.join(project_dir, "research_report.md")
-    output_html = output_md.replace(".md", ".html")
+    report_dir = os.path.join(project_dir, "report")
+    os.makedirs(report_dir, exist_ok=True)
+    output_md = os.path.join(report_dir, "report.md")
+    output_html = os.path.join(report_dir, "report.html")
 
     prompt = f"""You are a research report writer. Generate a thorough, publication-quality research report for a human audience.
 
 ## Your task
-Read ALL available data and produce a comprehensive report. Save both:
+Read ALL available data and produce a comprehensive report in the `report/` directory.
+This directory is overwritten each time — it's a standalone snapshot of the research.
+Save:
 - Markdown: `{output_md}`
 - HTML: `{output_html}` (self-contained, styled, with embedded plots as base64 images)
+- Plots: `report/plots/` (PNG files)
 
 ## Data sources to read (in order)
 1. `research_goal.md` — the original research objective
@@ -843,18 +848,21 @@ Write a markdown report with:
 ## Requirements
 - Include ACTUAL NUMBERS from the results bank — do not make up data
 - Create comparison tables showing baseline vs best results
-- Create Python plots using matplotlib and save them to `results/plots/` — embed them in the report as `![](results/plots/filename.png)`
+- Create Python plots using matplotlib and save them to `report/plots/` — embed them in the markdown as `![](plots/filename.png)`
 - Plot learning curves, bar charts comparing algorithms, progression over time
 - Be thorough — this is for a human who wants to understand everything that happened
 - Write clearly and technically — this could go in a paper appendix
 
 ## Output
-1. Save the markdown report to `{output_md}`
-2. Convert to a self-contained HTML file at `{output_html}` using Python:
+1. Clean the `report/` directory first: remove old plots and files
+2. Save plots to `report/plots/`
+3. Save the markdown report to `{output_md}` (reference plots as `![](plots/filename.png)`)
+4. Convert to a self-contained HTML file at `{output_html}` using Python:
    - Use the `markdown` library (install with pip if needed)
-   - Embed plots as base64 images so the HTML is fully self-contained
+   - Embed plots as base64 images so the HTML is fully self-contained (portable single file)
    - Add clean CSS styling (readable fonts, max-width, nice tables, code blocks)
    - The human will open this HTML in a browser
+5. The entire `report/` directory should be downloadable as a standalone research report
 """
 
     console.print("[bold]Generating research report...[/bold]")
@@ -866,8 +874,7 @@ Write a markdown report with:
     )
 
     if result.returncode == 0:
-        console.print(f"[green]Report saved to {output_md} and {output_html}[/green]")
-        # Auto-open HTML in browser
+        console.print(f"[green]Report saved to {report_dir}/[/green]")
         import webbrowser
         if os.path.exists(output_html):
             webbrowser.open(f"file://{os.path.abspath(output_html)}")
