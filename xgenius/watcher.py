@@ -92,25 +92,35 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                 _log(f"Failed to check completions: {e}")
 
             # Step 3: Pull results AND slurm logs for new completions
+            # Note: results_pulled is NOT set here — only after Claude succeeds
             for c in completions:
-                # Pull experiment results
                 try:
                     job_manager.pull_results(cluster_name=c.cluster, job_id=c.job_id)
                     _log(f"Completed: {c.experiment_id} (job {c.job_id}, exit={c.exit_code}) — results pulled")
                 except Exception as e:
                     _log(f"Completed: {c.experiment_id} (job {c.job_id}, exit={c.exit_code}) — results pull failed: {e}")
 
-                # Pull SLURM log files to local .xgenius/slurm_logs/
                 try:
                     job_manager.pull_slurm_logs(c.cluster, c.job_id, c.experiment_id)
-                    db.mark_results_pulled(c.job_id)
                     _log(f"Pulled slurm logs for {c.experiment_id}")
                 except Exception as e:
                     _log(f"Failed to pull slurm logs for {c.experiment_id}: {e}")
 
-            # Step 4: If new completions, trigger Claude
-            if completions:
-                prompt = db.build_wakeup_prompt(completions=completions)
+            # Step 4: Trigger Claude if there's work to do
+            # Either new completions from markers, OR completed jobs in DB
+            # that haven't been analyzed yet (e.g., from a previous failed trigger)
+            needs_trigger = len(completions) > 0
+
+            if not needs_trigger:
+                # Check if DB has completed jobs that haven't been processed
+                # (happens when Claude hit rate limits on previous trigger)
+                completed_not_pulled = db.get_completed_not_pulled()
+                if completed_not_pulled:
+                    needs_trigger = True
+                    _log(f"Found {len(completed_not_pulled)} completed jobs from previous cycle(s)")
+
+            if needs_trigger:
+                prompt = db.build_wakeup_prompt(completions=completions if completions else None)
                 remaining = len(db.get_active_job_ids())
                 _log(f"Triggering Claude: {len(completions)} new completion(s), {remaining} still active")
 
@@ -120,12 +130,17 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                 with open(lock_path, "w") as f:
                     f.write(str(os.getpid()))
                 try:
-                    subprocess.run(trigger_parts, cwd=project_dir)
+                    result = subprocess.run(trigger_parts, cwd=project_dir)
+                    if result.returncode != 0:
+                        _log(f"Claude exited with error (code {result.returncode}). Will retry next cycle.")
+                    else:
+                        # Mark all completed-not-pulled jobs as pulled (Claude succeeded)
+                        for job in db.get_completed_not_pulled():
+                            db.mark_results_pulled(job["job_id"])
+                        _log("Claude finished successfully. Resuming polling.")
                 finally:
                     if os.path.exists(lock_path):
                         os.remove(lock_path)
-
-                _log("Claude finished. Resuming polling.")
             else:
                 active = len(db.get_active_job_ids())
                 if active > 0:
