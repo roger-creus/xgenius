@@ -163,12 +163,12 @@ Run in a single terminal (tmux recommended):
 
 ```bash
 cd auto-myproject
-claude -p "Start the autonomous research loop. Read CLAUDE.md and research_goal.md and begin." --dangerously-skip-permissions && xgenius watch
+claude -p "Start the autonomous research loop. Read CLAUDE.md and research_goal.md and begin." --dangerously-skip-permissions ; xgenius watch
 ```
 
 The agent runs first (`claude -p`), does its initial work (reads goal, submits baseline experiments), and exits. Then the watcher daemon starts automatically (`&&`), polls clusters for completed jobs, and triggers a **fresh** `claude -p "..."` session when results are ready. Each wake-up is a clean session — no stale context accumulation.
 
-**Important:** The watcher MUST start after the initial agent exits. The `&&` ensures this. Do NOT run them in parallel — it causes duplicate Claude sessions.
+**Important:** The `;` ensures the watcher starts after the initial agent exits, even if Claude hits rate limits. Do NOT run them in parallel — it causes duplicate Claude sessions.
 
 **Safety:** The watcher will never trigger Claude if another Claude process is already running in the project directory. Completions are accumulated and delivered in the next cycle.
 
