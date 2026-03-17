@@ -994,9 +994,13 @@ def cmd_db(args):
         db.update_hypothesis(
             hypothesis_id=args.id,
             status=args.status or "",
+            description=args.description or "",
             conclusion=args.conclusion or "",
             comment=args.comment or "",
         )
+        _output({"status": "updated"}, args.json)
+    elif args.db_command == "job-update":
+        db.update_job_notes(args.id, error_message=args.comment or "")
         _output({"status": "updated"}, args.json)
 
 
@@ -1192,11 +1196,16 @@ def main():
     dhc = dp.add_parser("hypothesis-check", parents=[parent_parser], help="Check if all jobs for a hypothesis are done")
     dhc.add_argument("--id", required=True, help="Hypothesis ID")
 
-    dhu = dp.add_parser("hypothesis-update", parents=[parent_parser], help="Update hypothesis status/conclusion/comment")
+    dhu = dp.add_parser("hypothesis-update", parents=[parent_parser], help="Update hypothesis metadata")
     dhu.add_argument("--id", required=True, help="Hypothesis ID")
     dhu.add_argument("--status", default=None, help="New status (proposed/testing/confirmed/rejected/open/closed/promising)")
+    dhu.add_argument("--description", default=None, help="Update description")
     dhu.add_argument("--conclusion", default=None, help="Conclusion text")
     dhu.add_argument("--comment", default=None, help="Additional notes")
+
+    dju = dp.add_parser("job-update", parents=[parent_parser], help="Add notes/metadata to a job")
+    dju.add_argument("--id", required=True, help="Job ID")
+    dju.add_argument("--comment", default=None, help="Notes about this job/experiment")
 
     p.set_defaults(func=cmd_db)
 

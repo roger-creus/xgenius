@@ -306,8 +306,8 @@ class XGeniusDB:
             """, (hypothesis_id, description, motivation, expected_outcome, now, now))
 
     def update_hypothesis(self, hypothesis_id: str, status: str = "",
-                          conclusion: str = "", comment: str = "") -> None:
-        """Update a hypothesis status/conclusion/comment."""
+                          description: str = "", conclusion: str = "", comment: str = "") -> None:
+        """Update a hypothesis metadata."""
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         fields = ["updated_at=?"]
         values = [now]
@@ -315,6 +315,9 @@ class XGeniusDB:
         if status:
             fields.append("status=?")
             values.append(status)
+        if description:
+            fields.append("description=?")
+            values.append(description)
         if conclusion:
             fields.append("conclusion=?")
             values.append(conclusion)
@@ -325,6 +328,11 @@ class XGeniusDB:
         values.append(hypothesis_id)
         with _connect(self.db_path) as conn:
             conn.execute(f"UPDATE hypotheses SET {', '.join(fields)} WHERE hypothesis_id=?", values)
+
+    def update_job_notes(self, job_id: str, error_message: str = "") -> None:
+        """Add notes/comments to a job."""
+        with _connect(self.db_path) as conn:
+            conn.execute("UPDATE jobs SET error_message=? WHERE job_id=?", (error_message, job_id))
 
     def get_hypothesis(self, hypothesis_id: str) -> dict | None:
         """Get a single hypothesis."""
