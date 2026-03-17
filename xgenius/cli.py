@@ -807,12 +807,15 @@ def cmd_report(args):
     from xgenius.config import get_project_dir
 
     project_dir = get_project_dir(config)
-    output_path = args.output or os.path.join(project_dir, "research_report.md")
+    output_md = args.output or os.path.join(project_dir, "research_report.md")
+    output_html = output_md.replace(".md", ".html")
 
     prompt = f"""You are a research report writer. Generate a thorough, publication-quality research report for a human audience.
 
 ## Your task
-Read ALL available data and produce a comprehensive report saved to `{output_path}`.
+Read ALL available data and produce a comprehensive report. Save both:
+- Markdown: `{output_md}`
+- HTML: `{output_html}` (self-contained, styled, with embedded plots as base64 images)
 
 ## Data sources to read (in order)
 1. `research_goal.md` — the original research objective
@@ -845,7 +848,13 @@ Write a markdown report with:
 - Be thorough — this is for a human who wants to understand everything that happened
 - Write clearly and technically — this could go in a paper appendix
 
-Save the final report to `{output_path}`.
+## Output
+1. Save the markdown report to `{output_md}`
+2. Convert to a self-contained HTML file at `{output_html}` using Python:
+   - Use the `markdown` library (install with pip if needed)
+   - Embed plots as base64 images so the HTML is fully self-contained
+   - Add clean CSS styling (readable fonts, max-width, nice tables, code blocks)
+   - The human will open this HTML in a browser
 """
 
     console.print("[bold]Generating research report...[/bold]")
@@ -857,7 +866,11 @@ Save the final report to `{output_path}`.
     )
 
     if result.returncode == 0:
-        console.print(f"[green]Report saved to {output_path}[/green]")
+        console.print(f"[green]Report saved to {output_md} and {output_html}[/green]")
+        # Auto-open HTML in browser
+        import webbrowser
+        if os.path.exists(output_html):
+            webbrowser.open(f"file://{os.path.abspath(output_html)}")
     else:
         console.print(f"[red]Report generation failed (exit code {result.returncode})[/red]")
 
