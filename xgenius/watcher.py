@@ -112,12 +112,22 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
             needs_trigger = len(completions) > 0
 
             if not needs_trigger:
-                # Check if DB has completed jobs that haven't been processed
-                # (happens when Claude hit rate limits on previous trigger)
+                # Check if DB has completed jobs that Claude hasn't processed yet
+                # (happens when Claude hit rate limits or failed on previous trigger)
                 completed_not_pulled = db.get_completed_not_pulled()
                 if completed_not_pulled:
                     needs_trigger = True
-                    _log(f"Found {len(completed_not_pulled)} completed jobs from previous cycle(s)")
+                    # Build fake completions list so the prompt shows what needs processing
+                    completions = [
+                        type('Completion', (), {
+                            'job_id': j['job_id'],
+                            'experiment_id': j['experiment_id'],
+                            'exit_code': j.get('exit_code', -1),
+                            'cluster': j['cluster'],
+                        })()
+                        for j in completed_not_pulled
+                    ]
+                    _log(f"Retrying: {len(completed_not_pulled)} completed jobs awaiting Claude processing")
 
             if needs_trigger:
                 prompt = db.build_wakeup_prompt(completions=completions if completions else None)
@@ -132,12 +142,13 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                 try:
                     result = subprocess.run(trigger_parts, cwd=project_dir)
                     if result.returncode != 0:
-                        _log(f"Claude exited with error (code {result.returncode}). Will retry next cycle.")
+                        _log(f"Claude exited with error (code {result.returncode}). Will retry next cycle — completed jobs remain unprocessed.")
                     else:
-                        # Mark all completed-not-pulled jobs as pulled (Claude succeeded)
+                        # Claude succeeded — mark all completed jobs as processed
+                        # This prevents retriggering for these jobs next cycle
                         for job in db.get_completed_not_pulled():
                             db.mark_results_pulled(job["job_id"])
-                        _log("Claude finished successfully. Resuming polling.")
+                        _log("Claude finished successfully. Marked jobs as processed.")
                 finally:
                     if os.path.exists(lock_path):
                         os.remove(lock_path)
