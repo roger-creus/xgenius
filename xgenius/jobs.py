@@ -520,7 +520,7 @@ class JobManager:
             marker_dir = f"{cluster.scratch_path}/.xgenius/markers"
 
             # List .done files
-            ls_result = ssh.run(f"ls {marker_dir}/*.done 2>/dev/null")
+            ls_result = ssh.run(f"ls {marker_dir}/*.done")
             if not ls_result.success or not ls_result.stdout.strip():
                 continue
 
@@ -586,7 +586,7 @@ class JobManager:
 
         target_path = path or cluster.project_path
         if pattern:
-            result = ssh.run(f"find {target_path} -name '{pattern}' -maxdepth 3 2>/dev/null | head -100")
+            result = ssh.run(f"find {target_path} -name '{pattern}' -maxdepth 3")
         else:
             result = ssh.run(f"ls -la {target_path}")
 
