@@ -297,6 +297,10 @@ class JobManager:
                 effective_walltime=effective_walltime,
             )
 
+            # Auto-create hypothesis in DB if it doesn't exist
+            if hypothesis_id and not self.db.get_hypothesis(hypothesis_id):
+                self.db.add_hypothesis(hypothesis_id, description=f"Auto-created from submit: {experiment_id}")
+
             self.safety.log_action(
                 "submit",
                 {"cluster": cluster_name, "job_id": job_id, "experiment_id": experiment_id, "command": command},
