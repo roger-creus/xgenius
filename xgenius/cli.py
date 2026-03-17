@@ -239,7 +239,8 @@ docs: <description>            — Documentation updates
 **Rules:**
 - Commit BEFORE submitting experiments (so the cluster runs the committed code)
 - Commit AFTER recording results (so the journal state is preserved)
-- Push after every commit — this repo is your research record
+- Push after every commit — always push to the default branch (usually `main`): `git push origin main`
+- Check the default branch with `git remote show origin | grep HEAD` if unsure
 - Never force push or rewrite history
 - If a hypothesis breaks things, use `git revert` to undo it cleanly
 - Keep .xgenius/ state files committed (journal, jobs) so the research history is preserved in git
