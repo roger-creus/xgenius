@@ -42,9 +42,8 @@ def _load_config(args):
 # --- Init ---
 
 def cmd_init(args):
-    """Interactive project setup."""
-    import tomli_w
-    from xgenius.config import ensure_xgenius_dir, XGeniusConfig, ProjectConfig
+    """Set up autonomous research project with template config."""
+    from xgenius.config import ensure_xgenius_dir
 
     project_dir = os.getcwd()
     config_path = os.path.join(project_dir, "xgenius.toml")
@@ -53,109 +52,63 @@ def cmd_init(args):
         console.print("[yellow]xgenius.toml already exists. Use --force to overwrite.[/yellow]")
         return
 
-    console.print("[bold]xgenius init[/bold] — Setting up autonomous research project\n")
-
-    # Detect Dockerfile
-    dockerfile = "Dockerfile"
-    if not os.path.exists(os.path.join(project_dir, dockerfile)):
-        console.print("[yellow]No Dockerfile found in current directory.[/yellow]")
-        dockerfile = input("Path to Dockerfile (or press Enter to skip): ").strip() or ""
-
-    # Project name
     default_name = os.path.basename(project_dir)
-    project_name = input(f"Project name [{default_name}]: ").strip() or default_name
 
-    # Container image name
-    default_image = f"{project_name}.sif"
-    container_image = input(f"Container image name [{default_image}]: ").strip() or default_image
+    # Write template xgenius.toml — user edits this
+    template = f"""# xgenius.toml — Edit this file to configure your autonomous research project.
+# See https://github.com/roger-creus/xgenius for documentation.
 
-    # Cluster setup
-    clusters = {}
-    console.print("\n[bold]Cluster Configuration[/bold]")
-    console.print("Add clusters one at a time. Type 'done' when finished.\n")
+[project]
+name = "{default_name}"
+research_goal = "research_goal.md"       # Path to your research goal markdown file
+container_image = "{default_name}.sif"   # Singularity image filename
+dockerfile = "Dockerfile"                # Path to Dockerfile
 
-    while True:
-        cluster_name = input("Cluster name (or 'done'): ").strip()
-        if cluster_name.lower() == "done":
-            break
-        if not cluster_name:
-            continue
+[safety]
+max_gpus_per_job = 1                     # Maximum GPUs per single job
+max_cpus_per_job = 16                    # Maximum CPUs per single job
+max_memory_per_job = "64G"               # Maximum RAM per job
+max_walltime = "24:00:00"                # Maximum walltime per job
+max_concurrent_jobs = 50                 # Maximum jobs running at once
+max_total_gpu_hours = 10000              # Total GPU-hours budget
+allowed_command_prefixes = ["python"]     # Commands the agent can run
+forbidden_patterns = ["rm -rf", "sudo", "chmod", "chown", "wget", "curl", "mkfs", "dd ", "shutdown", "reboot", "kill -9"]
+require_singularity = true
 
-        hostname = input(f"  Hostname (SSH config name) [{cluster_name}]: ").strip() or cluster_name
-        username = input("  Username: ").strip()
-        project_path = input("  Project path on cluster (absolute): ").strip()
-        scratch_path = input("  Scratch path on cluster (absolute): ").strip()
-        image_path = input(f"  Image storage path [{scratch_path}/images]: ").strip() or f"{scratch_path}/images"
+[watcher]
+poll_interval_seconds = 60
+trigger_command = "claude --dangerously-skip-permissions"
 
-        # SLURM config
-        console.print(f"\n  [bold]SLURM settings for {cluster_name}[/bold]")
-        account = input("  Account (or press Enter for none): ").strip()
-        partition = input("  Partition (or press Enter for none): ").strip()
-        num_gpus = input("  GPUs per job [1]: ").strip() or "1"
-        num_cpus = input("  CPUs per job [8]: ").strip() or "8"
-        memory = input("  Memory per job [32G]: ").strip() or "32G"
-        walltime = input("  Max walltime [12:00:00]: ").strip() or "12:00:00"
-        modules = input("  Modules to load [singularity]: ").strip() or "singularity"
-        sing_cmd = input("  Singularity command [singularity]: ").strip() or "singularity"
-        output_dir = input(f"  Output dir on cluster [{scratch_path}/runs]: ").strip() or f"{scratch_path}/runs"
+# --- Add your clusters below ---
+# Copy and modify this template for each cluster.
+# hostname must match an entry in your ~/.ssh/config
 
-        sbatch_template = "slurm_account_template.sbatch" if account else "slurm_partition_template.sbatch"
+# [clusters.mycluster]
+# hostname = "mycluster-robot"           # SSH config host name
+# username = "myuser"                    # SSH username
+# project_path = "/home/myuser/project"  # Absolute path to code on cluster
+# scratch_path = "/scratch/myuser"       # Scratch space for outputs
+# image_path = "/scratch/myuser/images"  # Where .sif containers are stored
+# sbatch_template = "slurm_account_template.sbatch"  # or slurm_partition_template.sbatch
+#
+# [clusters.mycluster.slurm]
+# account = "my-allocation"              # SLURM account (leave "" if using partition)
+# partition = ""                         # SLURM partition (leave "" if using account)
+# num_gpus = 1                           # Default GPUs per job
+# gpu_type = ""                          # Default GPU type (e.g., "a100", "h100")
+# available_gpu_types = []               # All GPU types available on this cluster
+# num_cpus = 8                           # Default CPUs per job
+# memory = "32G"                         # Default RAM per job
+# walltime = "12:00:00"                  # Default walltime per job
+# modules = "apptainer"                  # Modules to load
+# singularity_command = "apptainer"      # "singularity" or "apptainer"
+# output_dir_cluster = "/scratch/myuser/runs"  # Experiment output directory
+# output_dir_container = "/results"      # Mount point inside container
+"""
 
-        clusters[cluster_name] = {
-            "hostname": hostname,
-            "username": username,
-            "project_path": project_path,
-            "scratch_path": scratch_path,
-            "image_path": image_path,
-            "sbatch_template": sbatch_template,
-            "slurm": {
-                "account": account,
-                "partition": partition,
-                "num_gpus": int(num_gpus),
-                "num_cpus": int(num_cpus),
-                "memory": memory,
-                "walltime": walltime,
-                "modules": modules,
-                "singularity_command": sing_cmd,
-                "output_dir_cluster": output_dir,
-                "output_dir_container": "/results",
-            },
-        }
-        console.print(f"  [green]Added cluster: {cluster_name}[/green]\n")
-
-    # Build TOML config
-    config_data = {
-        "project": {
-            "name": project_name,
-            "research_goal": "research_goal.md",
-            "container_image": container_image,
-            "dockerfile": dockerfile,
-        },
-        "safety": {
-            "max_gpus_per_job": 1,
-            "max_cpus_per_job": 16,
-            "max_memory_per_job": "64G",
-            "max_walltime": "24:00:00",
-            "max_concurrent_jobs": 10,
-            "max_total_gpu_hours": 500,
-            "allowed_command_prefixes": ["python"],
-            "forbidden_patterns": [
-                "rm -rf", "sudo", "chmod", "chown", "wget", "curl",
-                "mkfs", "dd ", "shutdown", "reboot", "kill -9",
-            ],
-            "require_singularity": True,
-        },
-        "watcher": {
-            "poll_interval_seconds": 60,
-            "trigger_command": "claude --dangerously-skip-permissions",
-        },
-        "clusters": clusters,
-    }
-
-    # Write xgenius.toml
-    with open(config_path, "wb") as f:
-        tomli_w.dump(config_data, f)
-    console.print(f"\n[green]Created xgenius.toml[/green]")
+    with open(config_path, "w") as f:
+        f.write(template)
+    console.print(f"[green]Created xgenius.toml[/green] — Edit this to add your clusters.")
 
     # Create research_goal.md template
     goal_path = os.path.join(project_dir, "research_goal.md")
@@ -180,21 +133,35 @@ Optionally list initial ideas for the agent to consider.
 """)
         console.print("[green]Created research_goal.md[/green] — Edit this to define your research objective.")
 
-    # Create .xgenius directory
-    from xgenius.config import load_config as _lc
-    cfg = _lc(config_path)
-    ensure_xgenius_dir(cfg)
+    # Create .xgenius directory structure
+    xgenius_dir = os.path.join(project_dir, ".xgenius")
+    for subdir in ["markers", "batches", "templates", "slurm_logs"]:
+        os.makedirs(os.path.join(xgenius_dir, subdir), exist_ok=True)
+
+    # Create standard files
+    for fname in ["journal.md", "DEBUG.md"]:
+        fpath = os.path.join(xgenius_dir, fname)
+        if not os.path.exists(fpath):
+            with open(fpath, "w") as f:
+                if fname == "DEBUG.md":
+                    f.write("# Debug Log\n\nErrors and issues encountered during autonomous research.\n")
     console.print("[green]Created .xgenius/ directory[/green]")
 
-    # Create results directory
-    results_dir = os.path.join(project_dir, "results")
-    os.makedirs(results_dir, exist_ok=True)
-    console.print("[green]Created results/ directory[/green] — results bank lives here.")
+    # Create run ID
+    from xgenius.config import create_run_id
+    with open(os.path.join(xgenius_dir, "run_id"), "w") as f:
+        run_id = create_run_id()
+        f.write(run_id)
+    console.print(f"[green]Run ID: {run_id}[/green]")
 
-    # Copy SBATCH templates to project so Claude can customize them
+    # Create results directory
+    os.makedirs(os.path.join(project_dir, "results"), exist_ok=True)
+    console.print("[green]Created results/ directory[/green]")
+
+    # Copy SBATCH templates
     from xgenius.templates import copy_templates_to_project
-    templates_dir = copy_templates_to_project(project_dir)
-    console.print(f"[green]Copied SBATCH templates to {templates_dir}[/green] — Claude can customize these.")
+    copy_templates_to_project(project_dir)
+    console.print("[green]Copied SBATCH templates to .xgenius/templates/[/green]")
 
     # Add .xgenius to .gitignore
     gitignore_path = os.path.join(project_dir, ".gitignore")
