@@ -331,6 +331,8 @@ Typical issues: outdated base images, missing dependencies, wrong Python version
 - `xgenius db active --json` — Currently running/submitted jobs
 - `xgenius db hypothesis-check --id H --json` — Check if all jobs for a hypothesis are done
 - `xgenius db hypotheses --json` — All hypotheses in DB
+- `xgenius db hypothesis-update --id H --status S --description D --conclusion C --comment N` — Update hypothesis metadata
+- `xgenius db job-update --id JOBID --comment "notes"` — Add notes to a specific job
 - `xgenius reset` — Clear all state for a fresh research run
 
 All commands support `--json` for structured output.
