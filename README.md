@@ -37,16 +37,12 @@ xgenius enables Claude Code to autonomously run experiments on SLURM clusters: f
 ## Installation
 
 ```bash
-pip install xgenius
-```
-
-Or from source:
-
-```bash
 git clone https://github.com/roger-creus/xgenius.git
 cd xgenius
 pip install -e .
 ```
+
+**Always install from source (editable mode).** This way the research agent can modify xgenius itself if it encounters issues during the autonomous loop — fixing bugs, adapting behavior, etc. Changes take effect immediately without reinstalling.
 
 ## One-time setup
 
