@@ -75,14 +75,25 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
             # Step 1: Update DB from squeue (sync actual states)
             active_ids = db.get_active_job_ids()
             if active_ids:
+                seen_in_squeue = set()
+                reachable_clusters = set()
                 for cluster_name in config.clusters:
                     try:
                         statuses = job_manager.status(cluster_name=cluster_name)
+                        reachable_clusters.add(cluster_name)
                         for s in statuses:
                             if s.job_id in active_ids:
                                 db.sync_job_state(s.job_id, s.state)
+                                seen_in_squeue.add(s.job_id)
                     except Exception as e:
                         _log(f"Failed to query {cluster_name}: {e}")
+
+                # Mark active jobs NOT in squeue as disappeared
+                # (only for jobs on clusters we successfully queried)
+                if reachable_clusters:
+                    for job in db.get_pending_jobs():
+                        if job["job_id"] not in seen_in_squeue and job["cluster"] in reachable_clusters:
+                            db.mark_disappeared(job["job_id"])
 
             # Step 2: Check for .done markers
             completions = []
