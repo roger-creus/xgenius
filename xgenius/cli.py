@@ -990,6 +990,14 @@ def cmd_db(args):
         summary = db.get_hypothesis_job_summary(hid)
         complete = db.is_hypothesis_complete(hid)
         _output({"hypothesis_id": hid, "complete": complete, **summary}, args.json)
+    elif args.db_command == "hypothesis-update":
+        db.update_hypothesis(
+            hypothesis_id=args.id,
+            status=args.status or "",
+            conclusion=args.conclusion or "",
+            comment=args.comment or "",
+        )
+        _output({"status": "updated"}, args.json)
 
 
 # --- Dashboard ---
@@ -1183,6 +1191,12 @@ def main():
 
     dhc = dp.add_parser("hypothesis-check", parents=[parent_parser], help="Check if all jobs for a hypothesis are done")
     dhc.add_argument("--id", required=True, help="Hypothesis ID")
+
+    dhu = dp.add_parser("hypothesis-update", parents=[parent_parser], help="Update hypothesis status/conclusion/comment")
+    dhu.add_argument("--id", required=True, help="Hypothesis ID")
+    dhu.add_argument("--status", default=None, help="New status (proposed/testing/confirmed/rejected/open/closed/promising)")
+    dhu.add_argument("--conclusion", default=None, help="Conclusion text")
+    dhu.add_argument("--comment", default=None, help="Additional notes")
 
     p.set_defaults(func=cmd_db)
 
