@@ -494,7 +494,7 @@ class XGeniusDB:
 
         # What to do
         parts.append("## Your tasks (in order):")
-        parts.append("1. **READ THE JOURNAL FIRST**: `xgenius journal read` — check for HUMAN DIRECTIVES that MUST be addressed")
+        parts.append("1. **READ THE JOURNAL FIRST**: `xgenius journal read` — check for HUMAN DIRECTIVES (marked [CRITICAL]/[HIGH]/[NORMAL]). These are instructions from the human and MUST be addressed before other work.")
         parts.append("2. Read CLAUDE.md for tools and conventions")
         parts.append("3. Read research_goal.md for the objective (check for updated evaluation protocols)")
         parts.append("4. Check DB: `xgenius db summary --json` for all job states")

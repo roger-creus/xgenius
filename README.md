@@ -173,10 +173,19 @@ The agent runs first (`claude -p`), does its initial work (reads goal, submits b
 **Monitor progress:**
 ```bash
 tail -f .xgenius/watcher.log           # watcher activity
-xgenius journal summary                # research progress
-xgenius status                         # running jobs
-xgenius job-history --json             # past jobs with walltimes
+xgenius db summary                     # job and hypothesis status
+xgenius journal read                   # research narrative
+xgenius dashboard                      # web-based DB browser
 ```
+
+**Steer the agent:** Add directives the agent must follow on its next wake-up:
+```bash
+xgenius steer "Revisit all rejected hypotheses with full 15-game evaluation"
+xgenius steer "Switch to HNS metric for all comparisons" --priority high
+xgenius steer "Stop working on h012, focus on h016 instead" --priority critical
+```
+
+Directives are timestamped and appended to the journal. The agent reads the journal first on every wake-up.
 
 ### Resetting for a fresh run
 

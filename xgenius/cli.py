@@ -1034,6 +1034,28 @@ def cmd_db(args):
         _output({"status": "updated"}, args.json)
 
 
+# --- Steer ---
+
+def cmd_steer(args):
+    """Add a human directive to the journal for the agent to follow."""
+    config = _load_config(args)
+    from xgenius.journal import ResearchJournal
+
+    journal = ResearchJournal(config)
+
+    directive = args.directive
+    priority = args.priority.upper()
+
+    entry = f"## HUMAN DIRECTIVE [{priority}]\n\n{directive}"
+    journal.write(entry)
+
+    if args.json:
+        _output({"status": "recorded", "priority": priority}, True)
+    else:
+        console.print(f"[green]Directive added to journal [{priority}][/green]")
+        console.print("The agent will see this on its next wake-up.")
+
+
 # --- Dashboard ---
 
 def cmd_dashboard(args):
@@ -1256,6 +1278,12 @@ def main():
     p = subparsers.add_parser("dashboard", parents=[parent_parser], help="Open web dashboard to inspect DB")
     p.add_argument("--port", type=int, default=8765, help="Port number")
     p.set_defaults(func=cmd_dashboard)
+
+    # steer
+    p = subparsers.add_parser("steer", parents=[parent_parser], help="Add a human directive for the agent to follow")
+    p.add_argument("directive", help="Your directive text")
+    p.add_argument("--priority", default="critical", choices=["critical", "high", "normal"], help="Priority level")
+    p.set_defaults(func=cmd_steer)
 
     args = parser.parse_args()
     args.func(args)
