@@ -336,13 +336,15 @@ class JobManager:
             [cluster_name] if cluster_name else list(self.config.clusters.keys())
         )
 
+        # Filter by run ID so we only show this project's jobs
+        from xgenius.config import get_run_id
+        run_id = get_run_id(self.config)
+
         all_statuses = []
         for cname in clusters_to_check:
             ssh = self._get_ssh(cname)
             cluster = self._get_cluster(cname)
 
-            # Rich squeue format: job_id, name, state, elapsed, time_limit, nodes,
-            # submit_time, start_time, num_gpus, num_cpus, memory, reason
             result = ssh.run(
                 f"squeue -u {cluster.username} -o %i|%j|%T|%M|%l|%D|%V|%S|%b|%C|%m|%R --noheader"
             )
@@ -353,6 +355,10 @@ class JobManager:
             for line in result.stdout.splitlines():
                 parts = line.split("|")
                 if len(parts) >= 7:
+                    name = parts[1].strip()
+                    # Only include jobs from this run
+                    if run_id and not name.startswith(run_id):
+                        continue
                     all_statuses.append(JobStatus(
                         job_id=parts[0].strip().strip('"'),
                         name=parts[1].strip(),
