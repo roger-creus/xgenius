@@ -503,14 +503,14 @@ class JobManager:
     def check_completions(self, cluster_name: str | None = None) -> list[CompletionEvent]:
         """Check for completed jobs by looking for .done marker files.
 
-        Uses batch SSH calls to avoid N round-trips for N markers.
-        Only processes markers for jobs in the current DB.
+        Uses ls to list markers, then cat for each one.
+        allowed_commands.sh on robot nodes rejects shell constructs (for/do/done)
+        so we use individual commands.
         """
         clusters_to_check = (
             [cluster_name] if cluster_name else list(self.config.clusters.keys())
         )
 
-        # Get current run's job IDs for filtering
         all_db_jobs = {j["job_id"] for j in self.db.get_all_jobs(limit=10000)}
 
         completions = []
@@ -519,40 +519,26 @@ class JobManager:
             ssh = self._get_ssh(cname)
             marker_dir = f"{cluster.scratch_path}/.xgenius/markers"
 
-            # Single SSH: list + cat all markers in one call
-            batch_result = ssh.run(
-                f'for f in {marker_dir}/*.done; do echo "FILE:$f"; cat "$f"; done',
-                timeout=60,
-            )
-
-            if not batch_result.success or not batch_result.stdout.strip():
+            # List marker files
+            ls_result = ssh.run(f"ls {marker_dir}/", timeout=30)
+            if not ls_result.success or not ls_result.stdout.strip():
                 continue
 
-            # Parse batch output
-            current_file = ""
-            current_content = ""
-            entries = []
-
-            for line in batch_result.stdout.splitlines():
-                if line.startswith("FILE:"):
-                    if current_file and current_content:
-                        entries.append((current_file, current_content.strip()))
-                    current_file = line[5:]
-                    current_content = ""
-                else:
-                    current_content += line
-
-            if current_file and current_content:
-                entries.append((current_file, current_content.strip()))
-
-            # Process entries
             files_to_remove = []
-            for marker_path, content in entries:
+            for fname in ls_result.stdout.strip().splitlines():
+                fname = fname.strip()
+                if not fname.endswith(".done"):
+                    continue
+
+                marker_path = f"{marker_dir}/{fname}"
+                cat_result = ssh.run(f"cat {marker_path}", timeout=10)
+                if not cat_result.success:
+                    continue
+
                 try:
-                    data = json.loads(content)
+                    data = json.loads(cat_result.stdout)
                     job_id = str(data.get("job_id", ""))
 
-                    # Skip markers not in our DB
                     if job_id not in all_db_jobs:
                         files_to_remove.append(marker_path)
                         continue
@@ -579,10 +565,9 @@ class JobManager:
                 except (json.JSONDecodeError, KeyError, ValueError):
                     files_to_remove.append(marker_path)
 
-            # Batch remove in one SSH call
-            if files_to_remove:
-                rm_list = " ".join(files_to_remove)
-                ssh.run(f"rm -f {rm_list}", timeout=30)
+            # Remove processed markers
+            for f in files_to_remove:
+                ssh.run(f"rm -f {f}", timeout=10)
 
         return completions
 
