@@ -500,8 +500,9 @@ class XGeniusDB:
         parts.append("4. Check DB: `xgenius db summary --json` for all job states")
         parts.append("5. Check results bank: `cat results/experiments.csv` and `cat results/hypotheses.csv`")
         parts.append("6. For completed experiments: pull results, parse CSVs, update results bank")
-        parts.append("7. Analyze and decide: continue waiting, or formulate new hypotheses")
-        parts.append("8. Write a journal entry summarizing what you did: `xgenius journal write \"...\"`")
-        parts.append("9. Commit and push all changes before exiting")
+        parts.append("7. For DISAPPEARED jobs: check `xgenius logs --job-id ID` and `xgenius errors --job-id ID` to investigate what happened. Update DB if needed (`xgenius db job-update`). Consider resubmitting if the job should have succeeded.")
+        parts.append("8. Analyze and decide: continue waiting, or formulate new hypotheses")
+        parts.append("9. Write a journal entry summarizing what you did: `xgenius journal write \"...\"`")
+        parts.append("10. Commit and push all changes before exiting")
 
         return "\n".join(parts)

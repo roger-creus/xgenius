@@ -101,6 +101,12 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                             if missing_counts[jid] >= 3:
                                 db.mark_disappeared(jid)
                                 _log(f"Job {jid} ({job['experiment_id']}) disappeared after 3 checks")
+                                # Try to pull logs so Claude can investigate
+                                try:
+                                    job_manager.pull_slurm_logs(job["cluster"], jid, job["experiment_id"])
+                                    _log(f"Pulled slurm logs for disappeared job {job['experiment_id']}")
+                                except Exception:
+                                    _log(f"Could not pull logs for disappeared job {job['experiment_id']}")
                                 del missing_counts[jid]
                         elif job["job_id"] in missing_counts:
                             # Job reappeared in squeue — reset counter
