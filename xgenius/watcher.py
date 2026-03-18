@@ -65,6 +65,9 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
     _log(f"Trigger command: {trigger_cmd}")
     _log(f"Watching clusters: {list(config.clusters.keys())}")
 
+    # Track consecutive cycles a job is missing from squeue before marking disappeared
+    missing_counts: dict[str, int] = {}
+
     while True:
         try:
             if _is_locked():
@@ -88,12 +91,20 @@ def run_watcher(config_path: str = "xgenius.toml", verbose: bool = False) -> Non
                     except Exception as e:
                         _log(f"Failed to query {cluster_name}: {e}")
 
-                # Mark active jobs NOT in squeue as disappeared
-                # (only for jobs on clusters we successfully queried)
+                # Track jobs missing from squeue — only mark disappeared after 3 consecutive misses
+                # This avoids race conditions where job finishes but marker hasn't been written yet
                 if reachable_clusters:
                     for job in db.get_pending_jobs():
                         if job["job_id"] not in seen_in_squeue and job["cluster"] in reachable_clusters:
-                            db.mark_disappeared(job["job_id"])
+                            jid = job["job_id"]
+                            missing_counts[jid] = missing_counts.get(jid, 0) + 1
+                            if missing_counts[jid] >= 3:
+                                db.mark_disappeared(jid)
+                                _log(f"Job {jid} ({job['experiment_id']}) disappeared after 3 checks")
+                                del missing_counts[jid]
+                        elif job["job_id"] in missing_counts:
+                            # Job reappeared in squeue — reset counter
+                            del missing_counts[job["job_id"]]
 
             # Step 2: Check for .done markers
             completions = []
