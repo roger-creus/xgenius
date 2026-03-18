@@ -494,9 +494,9 @@ class XGeniusDB:
 
         # What to do
         parts.append("## Your tasks (in order):")
-        parts.append("1. Read CLAUDE.md for tools and conventions")
-        parts.append("2. Read your research journal: `xgenius journal read` (your memory from previous sessions)")
-        parts.append("3. Read research_goal.md for the objective")
+        parts.append("1. **READ THE JOURNAL FIRST**: `xgenius journal read` — check for HUMAN DIRECTIVES that MUST be addressed")
+        parts.append("2. Read CLAUDE.md for tools and conventions")
+        parts.append("3. Read research_goal.md for the objective (check for updated evaluation protocols)")
         parts.append("4. Check DB: `xgenius db summary --json` for all job states")
         parts.append("5. Check results bank: `cat results/experiments.csv` and `cat results/hypotheses.csv`")
         parts.append("6. For completed experiments: pull results, parse CSVs, update results bank")
