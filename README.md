@@ -377,6 +377,17 @@ All commands support `--json` for structured output.
 | `xgenius watch` | Background daemon (triggers Claude on job completion) |
 | `xgenius dashboard` | Web-based DB browser for human inspection |
 
+## Examples
+
+Two full autonomous research projects built with xgenius:
+
+| Project | Goal | Hypotheses | Report |
+|---------|------|-----------|--------|
+| [auto-cleanrl](https://github.com/roger-creus/auto-cleanrl) | SOTA on 15 Atari games (PPO/PQN, 40M steps) | 45+ | [Report](examples/auto-cleanrl-report/report.html) |
+| [auto-craftax](https://github.com/roger-creus/auto-craftax) | SOTA on Craftax-Symbolic-v1 (1B steps) | 20+ | [Report](examples/auto-craftax-report/report.html) |
+
+Both repos are public — check their `research_goal.md`, `.xgenius/journal.md`, and `.xgenius/xgenius.db` to see the full autonomous research process.
+
 ## Citation
 
 If you use xgenius in your research, please cite it:
