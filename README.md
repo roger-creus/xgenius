@@ -54,17 +54,7 @@ pip install -e .
 claude setup-token
 ```
 
-**Important:** Make sure you do NOT have an `ANTHROPIC_API_KEY` environment variable set, as it overrides subscription auth and causes failures:
-
-```bash
-# Check if set:
-echo $ANTHROPIC_API_KEY
-
-# If set in conda:
-conda env config vars unset ANTHROPIC_API_KEY
-
-# If set in shell config, remove the export line from ~/.bashrc or ~/.zshrc
-```
+**Important:** Make sure you do NOT have an `ANTHROPIC_API_KEY` environment variable set, as it overrides subscription auth and causes failures.
 
 ### 2. Set up SSH access to your clusters
 
