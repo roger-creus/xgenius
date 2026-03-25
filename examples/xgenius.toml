@@ -62,7 +62,7 @@ trigger_command = "claude --dangerously-skip-permissions"  # Command to wake Cla
 # The [clusters.NAME.slurm] section defines DEFAULT job parameters.
 # Claude can override these per-job (within the [safety] limits above).
 
-# --- Example: GPU cluster with full GPUs and MIG support ---
+# --- Example: GPU cluster ---
 
 [clusters.mycluster]
 hostname = "mycluster"                 # Must match ~/.ssh/config Host entry
@@ -78,9 +78,8 @@ partition = ""                         # SLURM partition (for --partition). Leav
 num_gpus = 1                           # Default GPUs per job
 gpu_type = "a100"                      # Default GPU type (e.g., "a100", "h100", "v100"). Leave "" for any GPU.
 available_gpu_types = [                # All GPU types Claude can choose from on this cluster
-    "a100",                            # Full A100 GPU
-    "a100_3g.20gb",                    # MIG: 3/8 of A100, 20GB VRAM (good for quick tests)
-    "a100_4g.20gb",                    # MIG: 4/8 of A100, 20GB VRAM
+    "a100",                            # List GPU types available on your cluster
+    "v100",
 ]
 num_cpus = 8                           # Default CPUs per job
 memory = "32G"                         # Default RAM per job

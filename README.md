@@ -259,9 +259,8 @@ partition = ""                       # SLURM partition (--partition). Leave "" i
 num_gpus = 1                         # Default GPUs per job
 gpu_type = "a100"                    # Default GPU type. Leave "" for any GPU.
 available_gpu_types = [              # All GPU types Claude can pick from on this cluster
-    "a100",                          # Full A100
-    "a100_3g.20gb",                  # MIG: 3/8 of A100 (good for quick tests)
-    "v100",                          # Older GPU (cheaper/faster to schedule)
+    "a100",                          # List the GPU types available on your cluster
+    "v100",
 ]
 num_cpus = 8                         # Default CPUs per job
 memory = "32G"                       # Default RAM per job
@@ -272,20 +271,6 @@ output_dir_cluster = "/scratch/myuser/runs"  # Where experiment outputs go
 output_dir_container = "/results"    # Mount point inside the container
 ```
 
-### GPU types
-
-Many modern clusters support [Multi-Instance GPU (MIG)](https://docs.nvidia.com/datacenter/tesla/mig-user-guide/), which splits a single GPU into smaller virtual GPUs. This is useful for quick test runs that don't need a full GPU.
-
-Configure `available_gpu_types` per-cluster with all GPU types available on that cluster. Claude can then choose the right GPU for each job:
-
-```bash
-# Quick test on a MIG slice (smaller, faster to schedule)
-xgenius submit --gpu-type "a100_3g.20gb" --walltime "01:00:00" --command "python test.py"
-
-# Full training run on a complete GPU
-xgenius submit --gpu-type "a100" --walltime "12:00:00" --command "python train.py"
-```
-
 ### Resource management
 
 Claude can override defaults per-job using flags on `xgenius submit`:
@@ -293,7 +278,7 @@ Claude can override defaults per-job using flags on `xgenius submit`:
 | Flag | Description | Example |
 |------|-------------|---------|
 | `--gpus N` | Number of GPUs | `--gpus 1` |
-| `--gpu-type TYPE` | GPU model/MIG slice | `--gpu-type "a100_3g.20gb"` |
+| `--gpu-type TYPE` | GPU model | `--gpu-type "a100"` |
 | `--cpus N` | Number of CPUs | `--cpus 4` |
 | `--memory SIZE` | RAM | `--memory "16G"` |
 | `--walltime TIME` | Job duration | `--walltime "02:00:00"` |
@@ -305,12 +290,12 @@ Claude uses `xgenius job-history --json` to learn how long past jobs took and ad
 Define multiple clusters to let Claude distribute jobs across them:
 
 ```toml
-[clusters.fast-cluster]
-hostname = "fast-robot"
+[clusters.gpu-cluster]
+hostname = "gpu-cluster"
 # ... (GPU cluster for training)
 
-[clusters.test-cluster]
-hostname = "test-robot"
+[clusters.cpu-cluster]
+hostname = "cpu-cluster"
 # ... (smaller cluster for quick tests)
 ```
 
@@ -376,7 +361,7 @@ Two full autonomous research projects built with xgenius:
 | [auto-cleanrl](https://github.com/roger-creus/auto-cleanrl) | SOTA on 15 Atari games (PPO/PQN, 40M steps) | 45+ | [Report](examples/auto-cleanrl-report/report.html) |
 | [auto-craftax](https://github.com/roger-creus/auto-craftax) | SOTA on Craftax-Symbolic-v1 (1B steps) | 20+ | [Report](examples/auto-craftax-report/report.html) |
 
-Both repos are public — check their `research_goal.md`, `.xgenius/journal.md`, and `.xgenius/xgenius.db` to see the full autonomous research process.
+Both repos are public — check their `research_goal.md` and `.xgenius/journal.md` to see the full autonomous research process.
 
 ## Citation
 
