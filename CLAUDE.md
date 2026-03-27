@@ -65,3 +65,4 @@ python -m pytest tests/test_safety.py -v      # safety tests only
 - Each run has a unique ID (xg-XXXXXX) that scopes SLURM job names and prevents old jobs from interfering
 - SLURM logs are pulled to `.xgenius/slurm_logs/{hypothesis_id}/{experiment_id}/` for local inspection
 - Project-local SBATCH templates in `.xgenius/templates/` take priority over package templates
+- `xgenius compact` spawns a Claude agent to intelligently compact the research journal — reducing size while preserving all essential context (findings, hypothesis statuses, decisions, human directives, next steps). The original journal is backed up before replacement. Call this when the journal grows large and starts consuming too much context. Works with `--json` for programmatic use.

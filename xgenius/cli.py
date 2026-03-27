@@ -882,6 +882,173 @@ Write a markdown report with:
         console.print(f"[red]Report generation failed (exit code {result.returncode})[/red]")
 
 
+# --- Compact ---
+
+def cmd_compact(args):
+    """Spawn a Claude agent to compact the research journal."""
+    import subprocess
+    import tempfile
+    config = _load_config(args)
+    from xgenius.journal import ResearchJournal
+    from xgenius.config import get_project_dir
+
+    journal = ResearchJournal(config)
+    project_dir = get_project_dir(config)
+    content = journal.read()
+
+    if not content:
+        _output({"status": "skipped", "reason": "Journal is empty."}, args.json)
+        if not args.json:
+            console.print("[yellow]Journal is empty — nothing to compact.[/yellow]")
+        return
+
+    # Count current size
+    original_size = len(content)
+    original_lines = content.count("\n")
+
+    if not args.json:
+        console.print(f"[bold]Compacting journal ({original_lines} lines, {original_size:,} chars)...[/bold]")
+        console.print("Spawning a Claude agent to distill the journal while preserving essential research context.")
+
+    # Write current journal to a temp file for the agent to read
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".md", prefix="journal_full_", dir=project_dir, delete=False)
+    tmp.write(content)
+    tmp.close()
+
+    # Where the agent writes the compacted output
+    compact_out = tempfile.NamedTemporaryFile(mode="w", suffix=".md", prefix="journal_compact_", dir=project_dir, delete=False)
+    compact_out.close()
+
+    prompt = f"""You are a research journal compactor. Your job is to read a research journal and produce a compacted version that preserves ALL essential information while dramatically reducing size.
+
+## Input
+Read the full journal from: `{tmp.name}`
+
+## Output
+Write the compacted journal to: `{compact_out.name}`
+
+## What to KEEP (essential — never discard)
+- Current research goal and strategy
+- Active hypotheses and their status (proposed, testing, confirmed, rejected)
+- Key findings and insights with actual numbers/metrics
+- Human directives (entries marked "HUMAN DIRECTIVE") — keep these verbatim
+- Decisions and their rationale (why something was chosen or abandoned)
+- Known failure modes and pitfalls discovered
+- Ideas flagged for future investigation that haven't been explored yet
+- The current state of the research: what's working, what's next
+
+## What to REMOVE or COMPRESS
+- Redundant entries that repeat the same information
+- Superseded plans that were later replaced by newer plans
+- Verbose step-by-step operational logs ("submitted job X", "waiting for results", "pulling logs")
+- Intermediate results that were later superseded by final results
+- Debugging narratives for issues that were resolved
+- Multiple entries about the same hypothesis — merge into one concise summary
+- Boilerplate and filler text
+
+## Format rules
+The output MUST be a valid research journal that the agent can continue appending to with `xgenius journal write`. Use this format:
+
+```
+# Research Journal (compacted)
+
+## Research Goal
+<one paragraph summary of the goal>
+
+## Key Findings
+<bulleted list of the most important discoveries with numbers>
+
+## Hypothesis Status
+For each hypothesis that matters:
+### <hypothesis_id>: <short title>
+- **Status**: confirmed/rejected/testing/proposed
+- **Result**: <one-line summary with metrics>
+- **Key insight**: <what was learned>
+
+## Active Hypotheses
+<hypotheses currently being tested or proposed for testing>
+
+## Decisions & Rationale
+<important decisions that affect future work>
+
+## Known Pitfalls
+<failure modes and things to avoid>
+
+## Human Directives
+<any human directives, kept verbatim>
+
+## Next Steps
+<what should be investigated next>
+```
+
+---
+**[compacted at {{TIMESTAMP}}]**
+
+<the agent will continue writing entries below this line>
+
+## Rules
+- Be ruthlessly concise — aim for at least 50% size reduction
+- Never invent information — only include what's in the journal
+- Preserve ALL hypothesis IDs, experiment IDs, and metric values exactly
+- If in doubt about whether something is important, keep it
+- The compacted journal must give a new agent session everything it needs to continue the research without losing context
+- End with a clear "Next Steps" section so the agent knows exactly what to do next
+- Use the timestamp format: **[YYYY-MM-DD HH:MM UTC]**
+"""
+
+    result = subprocess.run(
+        ["claude", "-p", prompt, "--dangerously-skip-permissions"],
+        cwd=project_dir,
+    )
+
+    if result.returncode != 0:
+        # Clean up temp files
+        os.unlink(tmp.name)
+        os.unlink(compact_out.name)
+        _output({"status": "error", "reason": "Compaction agent failed."}, args.json)
+        if not args.json:
+            console.print("[red]Compaction failed.[/red]")
+        return
+
+    # Read the compacted output
+    if not os.path.exists(compact_out.name) or os.path.getsize(compact_out.name) == 0:
+        os.unlink(tmp.name)
+        os.unlink(compact_out.name)
+        _output({"status": "error", "reason": "Agent produced empty output."}, args.json)
+        if not args.json:
+            console.print("[red]Agent produced empty output — journal unchanged.[/red]")
+        return
+
+    with open(compact_out.name) as f:
+        compacted = f.read()
+
+    new_size = len(compacted)
+    new_lines = compacted.count("\n")
+    reduction = round((1 - new_size / original_size) * 100, 1) if original_size > 0 else 0
+
+    # Backup original journal, then replace
+    backup_path = journal.backup()
+    journal.replace(compacted)
+
+    # Clean up temp files
+    os.unlink(tmp.name)
+    os.unlink(compact_out.name)
+
+    result_data = {
+        "status": "compacted",
+        "original_lines": original_lines,
+        "compacted_lines": new_lines,
+        "original_chars": original_size,
+        "compacted_chars": new_size,
+        "reduction_percent": reduction,
+        "backup": backup_path,
+    }
+    _output(result_data, args.json)
+    if not args.json:
+        console.print(f"[green]Journal compacted: {original_lines} → {new_lines} lines ({reduction}% reduction)[/green]")
+        console.print(f"[dim]Backup saved to: {backup_path}[/dim]")
+
+
 # --- Budget ---
 
 def cmd_budget(args):
@@ -1193,6 +1360,10 @@ def main():
     jw.add_argument("entry", help="Journal entry text (markdown)")
 
     p.set_defaults(func=cmd_journal)
+
+    # compact
+    p = subparsers.add_parser("compact", parents=[parent_parser], help="Compact the research journal (spawn Claude agent)")
+    p.set_defaults(func=cmd_compact)
 
     # budget
     p = subparsers.add_parser("budget", parents=[parent_parser], help="Show compute budget")

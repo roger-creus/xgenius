@@ -47,6 +47,21 @@ class ResearchJournal:
         with open(self.journal_path, "a") as f:
             f.write(f"\n---\n**[{ts}]**\n\n{entry}\n")
 
+    def backup(self) -> str:
+        """Create a timestamped backup of the journal. Returns the backup path."""
+        if not os.path.exists(self.journal_path):
+            return ""
+        ts = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+        backup_path = self.journal_path + f".backup_{ts}"
+        import shutil
+        shutil.copy2(self.journal_path, backup_path)
+        return backup_path
+
+    def replace(self, content: str) -> None:
+        """Replace the journal contents (used by compaction)."""
+        with open(self.journal_path, "w") as f:
+            f.write(content)
+
     def clear(self) -> None:
         """Clear the journal (called by xgenius reset)."""
         if os.path.exists(self.journal_path):
